@@ -58,7 +58,7 @@ The harness itself can be reduced to five primitives:
 |---|---|
 | **Input** | captures what comes in (e.g. a message, the result of an action) |
 | **Context** | assembles what the model is shown (e.g. instructions, the message) |
-| **Model interface** | requests a response from the model |
+| **Model interface** | requests a response from the model (e.g. through an API, a local model) |
 | **Output** | handles the model's outputs (e.g. a reply, an action) |
 | **Control flow** | defines the shape of the loop (e.g. go again, hand back, stop) |
 
