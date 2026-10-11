@@ -4,7 +4,7 @@ By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.c
 
 *The purpose of this repo is to teach Harness Engineering*
 
-Harness engineering is the practice of building the body of an agent. To do it, you first need to know what an agent is and what it's made of. Then we'll build a body piece by piece around a simple task, and get it ready for production.
+Harness engineering is the practice of building the body of an agent. To do it, you first need to know what an agent is and what it's made of. Then we'll build a harness piece by piece using a simple task as guidance, evaluate that harness against a set of tasks, and get it ready for production.
 
 ## What is an Agent?
 
