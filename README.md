@@ -1,8 +1,10 @@
-# Harness engineering
+# Harness Engineering
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-To understand harness engineering, you first have to understand what an agent is.
+Harness engineering is building the body of an agent. To do it, you first need to know what an agent is and what it's made of. Then we'll build a body piece by piece around a simple task, and get it ready for production.
+
+## What is an Agent?
 
 An agent is a system that can:
 
@@ -13,18 +15,11 @@ An agent is a system that can:
 
 In short: observe → think → act, and repeat.
 
-Every agent is capable of doing these things because they are composed from two primitives:
+### Agent Primitives
 
-- **The model (the mind)** does the thinking. It turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
-- **The harness (the body)** does the observing and acting, and runs the loop. It captures input, assembles context, requests a response from the model, handles the output, and determines the shape of the loop.
+Every agent can do these things because it's made of two primitives: a model and a harness.
 
-Neither is an agent alone. A model without a harness can only think: it can't observe or act, effectively it's a brain in a jar. A harness without a model only defines how to observe and act, effectively its a body without a head. Together they close the loop: observe, think, act, then repeat.
-
-Harness engineering is the practice of building the body for the agent and the most effective bodies are shaped according to the capabilities of the mind inside, so we start with the model: we ask ourselves what does the model know and how does it behave,so that we can use that to ground the shape of our harness.
-
-## The model
-
-Up close, the model is a loop. Tokens go in, it predicts the next token by choosing from the ones most likely to come next, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token.
+**The model (the mind)** does the thinking. Tokens go in, it predicts the next token by choosing from the ones most likely to come next, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token:
 
 ```
             ┌──────────── append ◄────────────┐
@@ -34,15 +29,13 @@ TokensIn ─► Model ─► predicted next token ────┤
                                      is it <eos>? ── yes ─► TokensOut
 ```
 
-So everything a model does fits in one function: it takes tokens in and gives tokens out.
+So everything a model does fits in one function: tokens in, tokens out.
 
 **TokensOut = Model(TokensIn)**
 
-Given an input a model can produce an output. A model can't actually capture the inputs, it can't act on the outputs, it can't determine the flow. All of these things are the job of the harness.
+Given an input, it produces an output, and that's all. It can't capture its own inputs, choose what it's shown, act on its outputs, or decide what happens next.
 
-## The harness
-
-Here's the same loop, inside the harness. The harness hands the model what it observes, and acts on what the model writes:
+**The harness (the body)** does all of that. It does the observing and acting, and runs the loop. Here's the model's loop, inside the harness:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -57,19 +50,21 @@ Here's the same loop, inside the harness. The harness hands the model what it ob
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The harness has five parts, its primitives:
+The harness has five parts:
 
-| Primitive | What it does |
+| Part | What it does |
 |---|---|
 | **Input** | takes in what arrives: your message, or what a command printed |
 | **Context** | puts together what the model is shown |
 | **Model interface** | sends that to the model and gets its reply |
 | **Output** | shows the reply to you, or runs the command it asks for |
-| **Control flow** | decides what happens next: go again, hand back to you, or stop |
+| **Control flow** | determines the shape of the loop: go again, hand back to you, or stop |
 
-Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built. So let's build a harness.
+Neither primitive is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
 
-## Building a harness
+Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built, and the best bodies are shaped by the mind inside them: what the model knows, and how it behaves. So let's build one.
+
+## Building a Harness
 
 We aren't building a model here, so we'll build the harness around a capable one that we call through an API. Any provider that accepts Anthropic's Messages format will work; we use Claude Sonnet.
 
