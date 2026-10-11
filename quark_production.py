@@ -1,45 +1,35 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import subprocess, sys, os, re, glob, json, time, datetime, atexit, functools, signal
-from anthropic import Anthropic, APIConnectionError, RateLimitError, InternalServerError, OverloadedError, BadRequestError
+import subprocess, sys, os, re, glob, json, datetime, atexit
+from anthropic import Anthropic, BadRequestError
 
-model = Anthropic(max_retries=3)                         # resilience: retry a request that fails
-MODELS = ["claude-sonnet-5-5", "claude-opus-5-5"]        # resilience: if one keeps failing, try the next
-CHEAP = "claude-haiku-4-5"                               # performance: good enough for a summary
-bash = {"name": "bash", "description": "Run a shell command",
-        "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}
-EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session, message by message
-BOX = f"quark-{os.getpid()}"                             # safety: the container commands run in
-NEVER = re.compile(r"\bsudo\b|rm\s+-\w*[rf]|git\s+push|\.env\b")   # safety: never, whatever the answer
-MAX_STEPS = 50                                           # safety: the most steps for one request
-RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: where each step is written down
-MAX_RESULT = 10_000                                      # performance: the most of a command's output to send
+# ── model interface ─────────────────────────────────────────────────────────
+client = Anthropic(max_retries=3)                        # resilience: retry a request that fails
+MODEL = "claude-sonnet-5-5"
+def call(each=lambda event: None, **request):            # model interface: the response streams back, and each piece goes to each()
+    with client.messages.stream(model=MODEL, **request) as stream:
+        for event in stream: each(event)
+        return stream.get_final_message()
 
+# ── output: the one tool ────────────────────────────────────────────────────
+tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-# ── input ─────────────────────────────────────────────────────────────────────
+def show(event):                                         # output: text, shown as it's written
+    if event.type == "text": print(event.text, end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
-def capture_input():
-    try:
-        return " ".join(sys.argv[1:]) or input("\n> ")  # evaluation: a request can come from the command line
-    except (EOFError, KeyboardInterrupt):                # safety: Ctrl-D (or Ctrl-C) at the prompt quits
-        sys.exit()
+# ── context ─────────────────────────────────────────────────────────────────
+EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"
 
-
-# ── context ───────────────────────────────────────────────────────────────────
-
-def remember(message):                                   # persistence: episodic memory, every message as it was
+def remember(message):                                   # episodic memory: the harness writes every message, as it was
     os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
-    with open(EPISODE, "a") as file:
-        file.write(json.dumps(message, default=lambda block: block.model_dump(exclude_none=True)) + "\n")
+    with open(EPISODE, "a") as f: f.write(json.dumps(message, default=lambda b: b.model_dump(exclude_none=True)) + "\n")
 
+def add(working_memory, message):                        # one message, two places: in context and on disk
+    working_memory.append(message); remember(message)
 
-def add(conversation, message):                          # one message, two places: in the request and on disk
-    conversation.append(message)
-    remember(message)
-
-
-def skills():                                            # persistence: procedural memory, indexed from each skill's header
+def skills():                                            # procedural memory: an index built from each skill's front matter
     index = []
     for path in sorted(glob.glob(".quark/skills/*.md")):
         text = open(path).read()
@@ -47,22 +37,15 @@ def skills():                                            # persistence: procedur
         index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
     return "\n".join(index) or "- (none yet)"
 
-
-def mechanics():                                         # persistence: its own code, so it knows how it works
+def mechanics():                                         # self-knowledge: this file, with the system prompt redacted
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # redacted: it is the prompt you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 
-
-@functools.cache
-def instructions():                                      # performance: built once a session, so the cache holds
-    return system()
-
-
-def system():                                            # persistence: how to use its memories, and who it is
-    return f"""# Self Model
+def system():                                            # instructions
+    return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Self Model
 
 **Identity:** You are quark — a self in a world with other selves.
 **Mind:** your context window — where thinking happens. It holds your working memory: this session's messages. Summarized when full; the originals stay in your episodic memory.
-**Body:** bash — your singular means of acting and observing. It runs in a container that sees only {os.getcwd()}, with no network: anything doable from a command line in that folder — any program or language already there — is within it. The person approves each command before it runs; some are never allowed; each is stopped after a minute.
+**Body:** bash — your singular means of acting and observing. It runs in a container that sees only {os.getcwd()}, with no network: anything doable from a command line in that folder — any program or language already there — is within it. The person approves each command before it runs; each is stopped after a minute.
 **Loop:** observe → think → act → repeat.
 
 # Memory
@@ -144,7 +127,7 @@ Rules: one skill per file; if a skill turns out wrong or a request changes it, r
 
 Format (written by the harness; one line per message, exactly as it was in working memory):
 {{"role": "user", "content": "<the input that opened the session>"}}   ← always the first line
-{{"role": "assistant", "content": [{{"type": "tool_use", "input": {{"command": "<command>"}}, ...}}]}}
+{{"role": "assistant", "content": [{{"type": "tool_use", "input": {{"cmd": "<command>"}}, ...}}]}}
 {{"role": "user", "content": [{{"type": "tool_result", "content": "<what it printed>", ...}}]}}
 {{"role": "assistant", "content": [{{"type": "text", "text": "<your answer>"}}]}}
 
@@ -155,7 +138,7 @@ Read moves (leave {EPISODE} out; lines are long, so cut them):
 - slice by time: `ls .quark/episodes/ | tail -5`, `ls .quark/episodes/2026-10-06T15*`
 - filter by content: `grep -il "topic" .quark/episodes/*.jsonl | grep -v {EPISODE}`
 - expand around matches: `grep -i "topic" <file> | cut -c1-300`
-- follow the actions: `grep -o '"command": "[^"]*"' <file>`
+- follow the actions: `grep -o '"cmd": "[^"]*"' <file>`
 - see how it ended: `tail -n 2 <file> | cut -c1-400`
 
 Rules: never edit these files; never print a whole file.
@@ -205,187 +188,101 @@ This code is your harness — shown so you know your self mechanics. The system 
 
 ```python
 {mechanics()}
-```"""
+```"""}]
 
+def compact(working_memory, drop):                       # lazy: runs only after the API says the prompt is too long
+    turns = [i for i, m in enumerate(working_memory) if m["role"] == "user" and isinstance(m["content"], str)]
+    if drop > len(turns): sys.exit("[working memory can't be summarized small enough]")
+    keep = working_memory[turns[drop]:] if drop < len(turns) else [working_memory[turns[-1]]]
+    summary = call(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "Your working memory is full. Summarize into a gist that preserves what matters for continuing."}])
+    gist = next((b.text for b in summary.content if b.type == "text"), "")
+    return [{"role": "user", "content": f"[your earlier working memory, summarized; every original message is in {EPISODE}] {gist}"}]
 
-def assemble_context(conversation):
-    return {"system": instructions(), "tools": [bash], "messages": conversation,
-            "cache_control": {"type": "ephemeral"}}      # performance: reuse what was already sent
+def resume():                                            # persistence: carry on a session that ended mid-task
+    global EPISODE
+    episodes = sorted(glob.glob(".quark/episodes/*.jsonl"))
+    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
+    working_memory = [json.loads(line) for line in open(episodes[-1])]
+    last = working_memory[-1]
+    unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
+    if not unfinished or not yes(f"continue the unfinished session {working_memory[0]['content'][:50]!r}? [y/N] "): return []
+    EPISODE = episodes[-1]                               # carry on in the same file
+    if last["role"] == "assistant":                      # it stopped while commands were running
+        add(working_memory, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
+            "content": "[interrupted: it may or may not have run. Check before repeating it.]"} for block in last["content"] if block["type"] == "tool_use"]})
+    return working_memory
 
+# ── observability ───────────────────────────────────────────────────────────
+RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: outside the folder, where quark can't change it
+def record(**step):                                      # observability: one line per step
+    os.makedirs(os.path.dirname(RECORD), exist_ok=True)
+    with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 
-def summarize(conversation):                             # resilience: too long to send, so the older part becomes a summary
-    starts = [i for i, message in enumerate(conversation) if message["role"] == "user" and isinstance(message["content"], str)]
-    if len(starts) < 2:
-        sys.exit("[this request alone is too long to send]")
-    older, newer = conversation[:starts[-1]], conversation[starts[-1]:]
-    ask = {"role": "user", "content": "Summarize this conversation, keeping what matters for carrying on."}
-    summary = model.messages.create(model=CHEAP, max_tokens=2048, tools=[bash], messages=older + [ask])   # performance: a cheaper model
-    newer[0] = {"role": "user", "content": f"[earlier, summarized; every message is in {EPISODE}] {summary.content[0].text}\n\n{newer[0]['content']}"}
-    record(summarized=len(older))
-    return newer
-
-
-# ── model interface ───────────────────────────────────────────────────────────
-
-def request_response(context, on_each_piece):
-    for name in MODELS:                                  # resilience: if one keeps failing, try the next
-        shown = False
-        try:
-            with model.messages.stream(model=name, max_tokens=16384, **context) as stream:   # performance: stream the reply
-                try:
-                    for piece in stream:
-                        shown = shown or piece.type == "text"
-                        on_each_piece(piece)
-                except KeyboardInterrupt:                # safety: with streaming, Ctrl-C stops it mid-sentence
-                    return stream.current_message_snapshot
-                return stream.get_final_message()
-        except (APIConnectionError, RateLimitError, InternalServerError, OverloadedError) as error:
-            record(model_failed=name, error=type(error).__name__)
-            if shown:
-                raise                                    # resilience: half a reply is on screen, so don't start another
-            failure = error
-    raise failure
-
-
-# ── output ────────────────────────────────────────────────────────────────────
-
+# ── safety ──────────────────────────────────────────────────────────────────
+BOX = f"quark-{os.getpid()}"
 def start_box():                                         # safety: a container that sees this folder and nothing else
     here = os.getcwd()
     subprocess.run(["docker", "run", "-d", "--rm", "--name", BOX, "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
-                    "-e", "HOME=/tmp", "-v", f"{here}:{here}", "-w", here, "python:3.13", "sleep", "infinity"],
-                   check=True, capture_output=True)
+                    "-e", "HOME=/tmp", "-v", f"{here}:{here}", "-w", here, "python:3.13", "sleep", "infinity"], check=True, capture_output=True)
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))   # stopped from outside: still remove the container
 
+# ── input ───────────────────────────────────────────────────────────────────
+def read(prompt):                                        # input: from a person
+    while True:
+        print(prompt, end="", flush=True)
+        line = sys.stdin.readline()
+        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
+        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
+        prompt = "> "
+def yes(question):                                       # input: a yes or no from a person; anything else is no
+    print(question, end="", flush=True)
+    return sys.stdin.readline().strip().lower() == "y"
+working_memory = resume()                                # persistence: an unfinished session comes back first
+input = "" if working_memory else " ".join(sys.argv[1:]) or read("> ")
+if input == "/q": sys.exit()
+chat = len(sys.argv) < 2
 
-def show_text(piece):                                    # performance: words appear as they arrive
-    if piece.type == "content_block_start" and piece.content_block.type == "text":
-        print("< ", end="", flush=True)
-    if piece.type == "text":
-        print(piece.text.replace("\n", "\n  "), end="", flush=True)
-    if piece.type == "content_block_stop" and piece.content_block.type == "text":
-        print()
+# ── control flow ────────────────────────────────────────────────────────────
+start_box()
+drop = 0
+if input: add(working_memory, {"role": "user", "content": input})
 
+while True:
+    try:
+        if drop:
+            working_memory, drop = compact(working_memory, drop), 0
+        response = call(show, max_tokens=16384, system=system(), tools=tools, messages=working_memory,
+                        cache_control={"type": "ephemeral"})   # performance: the conversation is cached too, not just the prompt
+        output = response.content
+        record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
+               cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
+    except BadRequestError as e:
+        if "prompt is too long" not in str(e): raise
+        drop += 1
+        continue
 
-def run_command(command):
-    ran = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", command],   # resilience: a minute at most
-                         capture_output=True, text=True, errors="replace")                # resilience: odd bytes can't crash it
-    result = ran.stdout + ran.stderr or "(no output)"
-    if ran.returncode == 124:
-        result += "\n[stopped: it ran for over a minute]"
-    record(command=command, exit=ran.returncode)
-    print("  " + "\n  ".join(result.splitlines()[:10]))  # observability: what it did, not just what it ran
-    return trim(result)
+    add(working_memory, {"role": "assistant", "content": output})   # on disk before any tool runs
 
-
-def trim(result):                                        # performance: keep the start and end of a long result
-    if len(result) <= MAX_RESULT:
-        return result
-    return f"{result[:MAX_RESULT // 2]}\n[... {len(result) - MAX_RESULT} characters cut ...]\n{result[-MAX_RESULT // 2:]}"
-
-
-def handle_output(response):
-    tool_results = []
-    for block in response.content:
+    input = []
+    for block in output:                                 # output: run tool requests
         if block.type == "tool_use":
-            command = block.input.get("command", "")
-            print(f"$ {command}")
-            if response.stop_reason == "max_tokens" and block is response.content[-1]:
-                result = "[never ran: the request was cut off]"   # safety: half a command never runs
-            elif NEVER.search(command):
-                result = "[refused: never allowed]"     # safety: never, whatever anyone answers
-                record(command=command, refused="never")
-            elif allowed(command):
-                result = run_command(command)
+            cmd = block.input["cmd"]
+            print(f"$ {cmd}")
+            if yes("  run this? [y/N] "):                # safety: nothing runs without a yes
+                done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+                result = done.stdout or f"(exit {done.returncode})"
+                if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
+                record(cmd=cmd, exit=done.returncode)    # observability
             else:
                 result = "[refused: the person said no]"
-                record(command=command, refused="no")
-            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
-    return tool_results
+                record(cmd=cmd, refused=True)            # observability
+            print(result)
+            input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 
-
-# ── control flow ──────────────────────────────────────────────────────────────
-
-def allowed(command):                                    # safety: nothing else runs without a yes
-    return input("  run this? [y/N] ").strip().lower() == "y"
-
-
-def record(**step):                                      # observability: one line per step, outside the box
-    os.makedirs(os.path.dirname(RECORD), exist_ok=True)
-    with open(RECORD, "a") as log:
-        log.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
-
-
-def resume():                                            # persistence: pick up a session that ended mid-task
-    global EPISODE
-    episodes = sorted(glob.glob(".quark/episodes/*.jsonl"))
-    if not episodes:
-        return []
-    conversation = [json.loads(line) for line in open(episodes[-1])]
-    last = conversation[-1]
-    unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"] if isinstance(block, dict))
-    if not unfinished or input(f"continue the unfinished session {conversation[0]['content'][:50]!r}? [y/N] ").strip().lower() != "y":
-        return []
-    EPISODE = episodes[-1]                               # carry on in the same file
-    if last["role"] == "assistant":                      # commands were running when it stopped
-        add(conversation, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
-            "content": "[interrupted: it may or may not have run. Check before repeating it.]"} for block in last["content"] if block["type"] == "tool_use"]})
-    return conversation
-
-
-def stopped(conversation, why):                          # safety: answer what never finished, then hand back
-    last = conversation[-1]
-    if last["role"] == "assistant":                      # it stopped while commands ran: each needs an answer
-        ids = [block.id for block in last["content"] if block.type == "tool_use"]
-        if ids:
-            add(conversation, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": i,
-                                                           "content": "[stopped before it finished]"} for i in ids]})
-    add(conversation, {"role": "assistant", "content": f"[{why}]"})
-    record(stopped=why)
-    print(f"[{why}]")
-
-
-def act(conversation):                                   # one request, carried through: go again while a tool ran
-    for step in range(MAX_STEPS):
-        started = time.time()
-        try:
-            response = request_response(assemble_context(conversation), show_text)
-        except BadRequestError as error:
-            if "prompt is too long" not in str(error):
-                raise
-            conversation[:] = summarize(conversation)
-            continue
-        usage = response.usage                           # observability: the tokens come from the end of the stream
-        record(model=response.model, seconds=round(time.time() - started, 1), tokens_in=usage.input_tokens,
-               written=usage.cache_creation_input_tokens, cached=usage.cache_read_input_tokens, tokens_out=usage.output_tokens)
-        if response.stop_reason is None:                 # persistence: a reply cut off is kept as what was said, marked
-            said = "".join(block.text for block in response.content if block.type == "text")
-            add(conversation, {"role": "assistant", "content": f"{said}\n[stopped by you]"})
-            record(stopped="stopped by you")
-            print("\n[stopped by you]")
-            return
-        add(conversation, {"role": "assistant", "content": response.content})   # on disk before any command runs
-        tool_results = handle_output(response)
-        if not tool_results:
-            return                                       # done: hand back to the person
-        add(conversation, {"role": "user", "content": tool_results})   # a tool ran: go again
-    stopped(conversation, f"stopped after {MAX_STEPS} steps")
-
-
-def control_flow():
-    start_box()
-    conversation = resume()
-    while True:
-        if not conversation or conversation[-1]["role"] == "assistant":   # persistence: an unfinished task carries on
-            add(conversation, {"role": "user", "content": capture_input()})
-        try:
-            act(conversation)
-        except KeyboardInterrupt:                        # safety: Ctrl-C stops the command, and everything it started
-            subprocess.run(["docker", "exec", BOX, "kill", "-9", "-1"], capture_output=True)
-            stopped(conversation, "stopped by you")
-        if sys.argv[1:]:
-            break                                        # evaluation: a request from the command line runs once
-
-
-if __name__ == "__main__":
-    control_flow()
+    if input:
+        add(working_memory, {"role": "user", "content": input})
+        continue
+    if not chat or (input := read("\n> ")) == "/q":
+        break
+    add(working_memory, {"role": "user", "content": input})
