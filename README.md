@@ -15,11 +15,11 @@ I like to sum the idea up as one equation: an agent is a harness wrapped around 
 
 **Agent = Harness(Model)**
 
-Harness engineering is building that body.
+Harness engineering is building that body. A body is shaped by the mind inside it, so we start with the model: what it does, and what it can't.
 
 ## The model
 
-A model predicts. Tokens go in, it returns the most probable next token, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token.
+Up close, the model is a loop. Tokens go in, it returns the most probable next token, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token.
 
 ```
             ┌──────────── append ◄────────────┐
@@ -31,11 +31,11 @@ TokensIn ─► Model ─► most probable next token ─┤
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does.
+That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Every token it reads has to be handed to it, and every token it writes has to be turned into something that happens. That's the harness's job.
 
 ## The harness
 
-Here's the whole agent: the model, with its loop of predicting the next token, inside the harness:
+Here's the same loop, inside the harness. The harness hands the model what it perceives, and acts on what the model writes:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
