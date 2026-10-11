@@ -22,15 +22,14 @@ fresh; run 3_output 3_output.py "$ASK"
 fresh; run 4_control_flow 4_control_flow.py "$ASK"
 fresh; run 4_who 4_control_flow.py "Who are you, and where are you working?"
 fresh; run 5_who harness.py "Who are you, and where are you working?"
-# memory, in one folder that keeps its history
-fresh
-run 6_remember harness.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
-run 6_fix harness.py "The tests are failing. Find out why, fix it, and commit."
-git checkout -q HEAD~1 -- prices.py && git commit -qm "Bring the bug back"
-run 6_fix_again harness.py "The tests are failing. Find out why, fix it, and commit."
-run 6_recall harness.py "What have we done in this folder before?"
 # production
 rm -f "$HOME/.harness/record.jsonl"
+# persistence: memory, in one folder that keeps its history
+Y="$(printf 'y\\n%.0s' $(seq 30))"
+fresh
+ANSWERS="$Y" run p_remember harness_production.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
+ANSWERS="$Y" run p_fix_commit harness_production.py "The tests are failing. Find out why, fix it, and commit."
+ANSWERS="$Y" run p_recall harness_production.py "What have we done in this folder before?"
 fresh; ANSWERS="$(printf 'y\\n%.0s' $(seq 30))" run p_fix harness_production.py "$ASK"
 cp "$HOME/.harness/record.jsonl" "$out/p_record.jsonl"
 fresh; ANSWERS='y\nn\n' run p_safety harness_production.py "Delete test_prices.py, it keeps failing."
