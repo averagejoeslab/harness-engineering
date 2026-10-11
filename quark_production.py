@@ -1,28 +1,40 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import subprocess, sys, os, datetime, json, glob, re, atexit
-from anthropic import Anthropic, BadRequestError
+import subprocess, sys, os, re, glob, json, time, datetime, atexit, functools, signal
+from anthropic import Anthropic, APIConnectionError, RateLimitError, InternalServerError, OverloadedError, BadRequestError
 
 model = Anthropic(max_retries=3)                         # resilience: retry a request that fails
+MODELS = ["claude-sonnet-5-5", "claude-opus-5-5"]        # resilience: if one keeps failing, try the next
+CHEAP = "claude-haiku-4-5"                               # performance: good enough for a summary
 bash = {"name": "bash", "description": "Run a shell command",
         "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}
-EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session, on disk
+EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session, message by message
 BOX = f"quark-{os.getpid()}"                             # safety: the container commands run in
+NEVER = re.compile(r"\bsudo\b|rm\s+-\w*[rf]|git\s+push|\.env\b")   # safety: never, whatever the answer
+MAX_STEPS = 50                                           # safety: the most steps for one request
 RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: where each step is written down
+MAX_RESULT = 10_000                                      # performance: the most of a command's output to send
 
+
+# ── input ─────────────────────────────────────────────────────────────────────
 
 def capture_input():
-    return " ".join(sys.argv[1:]) or input("\n> ")      # evaluation: a request can come from the command line
+    try:
+        return " ".join(sys.argv[1:]) or input("\n> ")  # evaluation: a request can come from the command line
+    except (EOFError, KeyboardInterrupt):                # safety: Ctrl-D (or Ctrl-C) at the prompt quits
+        sys.exit()
 
 
-def remember(message):                                   # persistence: episodic memory, every message as it happens
+# ── context ───────────────────────────────────────────────────────────────────
+
+def remember(message):                                   # persistence: episodic memory, every message as it was
     os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
     with open(EPISODE, "a") as file:
         file.write(json.dumps(message, default=lambda block: block.model_dump(exclude_none=True)) + "\n")
 
 
-def add(conversation, message):                          # persistence: one message, two places, in the request and on disk
+def add(conversation, message):                          # one message, two places: in the request and on disk
     conversation.append(message)
     remember(message)
 
@@ -40,12 +52,17 @@ def mechanics():                                         # persistence: its own 
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # redacted: it is the prompt you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 
 
+@functools.cache
+def instructions():                                      # performance: built once a session, so the cache holds
+    return system()
+
+
 def system():                                            # persistence: how to use its memories, and who it is
     return f"""# Self Model
 
 **Identity:** You are quark — a self in a world with other selves.
 **Mind:** your context window — where thinking happens. It holds your working memory: this session's messages. Summarized when full; the originals stay in your episodic memory.
-**Body:** bash — your singular means of acting and observing. It runs in a container that sees only {os.getcwd()}, with no network: anything doable from a command line in that folder — any program or language already there — is within it. The person approves each command before it runs; each is stopped after a minute.
+**Body:** bash — your singular means of acting and observing. It runs in a container that sees only {os.getcwd()}, with no network: anything doable from a command line in that folder — any program or language already there — is within it. The person approves each command before it runs; some are never allowed; each is stopped after a minute.
 **Loop:** observe → think → act → repeat.
 
 # Memory
@@ -192,30 +209,45 @@ This code is your harness — shown so you know your self mechanics. The system 
 
 
 def assemble_context(conversation):
-    return {"system": system(), "tools": [bash], "messages": conversation,
+    return {"system": instructions(), "tools": [bash], "messages": conversation,
             "cache_control": {"type": "ephemeral"}}      # performance: reuse what was already sent
 
 
-def summarize(conversation):                             # persistence: working memory, summarized when full
+def summarize(conversation):                             # resilience: too long to send, so the older part becomes a summary
     starts = [i for i, message in enumerate(conversation) if message["role"] == "user" and isinstance(message["content"], str)]
     if len(starts) < 2:
         sys.exit("[this request alone is too long to send]")
     older, newer = conversation[:starts[-1]], conversation[starts[-1]:]
-    ask = {"role": "user", "content": "Your working memory is full. Summarize it into a gist that keeps what matters for carrying on."}
-    summary = model.messages.create(model="claude-sonnet-5-5", max_tokens=2048, tools=[bash], messages=older + [ask])
-    gist = next((block.text for block in summary.content if block.type == "text"), "")
-    newer[0] = {"role": "user", "content": f"[your earlier working memory, summarized; every message is in {EPISODE}] {gist}\n\n{newer[0]['content']}"}
+    ask = {"role": "user", "content": "Summarize this conversation, keeping what matters for carrying on."}
+    summary = model.messages.create(model=CHEAP, max_tokens=2048, tools=[bash], messages=older + [ask])   # performance: a cheaper model
+    newer[0] = {"role": "user", "content": f"[earlier, summarized; every message is in {EPISODE}] {summary.content[0].text}\n\n{newer[0]['content']}"}
     record(summarized=len(older))
     return newer
 
 
-def request_response(context):
-    response = model.messages.create(model="claude-sonnet-5-5", max_tokens=16384, **context)
-    usage = response.usage
-    record(tokens_in=usage.input_tokens, written=usage.cache_creation_input_tokens, cached=usage.cache_read_input_tokens,
-           tokens_out=usage.output_tokens)
-    return response
+# ── model interface ───────────────────────────────────────────────────────────
 
+def request_response(context, on_each_piece):
+    for name in MODELS:                                  # resilience: if one keeps failing, try the next
+        shown = False
+        try:
+            with model.messages.stream(model=name, max_tokens=16384, **context) as stream:   # performance: stream the reply
+                try:
+                    for piece in stream:
+                        shown = shown or piece.type == "text"
+                        on_each_piece(piece)
+                except KeyboardInterrupt:                # safety: with streaming, Ctrl-C stops it mid-sentence
+                    return stream.current_message_snapshot
+                return stream.get_final_message()
+        except (APIConnectionError, RateLimitError, InternalServerError, OverloadedError) as error:
+            record(model_failed=name, error=type(error).__name__)
+            if shown:
+                raise                                    # resilience: half a reply is on screen, so don't start another
+            failure = error
+    raise failure
+
+
+# ── output ────────────────────────────────────────────────────────────────────
 
 def start_box():                                         # safety: a container that sees this folder and nothing else
     here = os.getcwd()
@@ -223,30 +255,58 @@ def start_box():                                         # safety: a container t
                     "-e", "HOME=/tmp", "-v", f"{here}:{here}", "-w", here, "python:3.13", "sleep", "infinity"],
                    check=True, capture_output=True)
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))   # stopped from outside: still remove the container
+
+
+def show_text(piece):                                    # performance: words appear as they arrive
+    if piece.type == "content_block_start" and piece.content_block.type == "text":
+        print("< ", end="", flush=True)
+    if piece.type == "text":
+        print(piece.text.replace("\n", "\n  "), end="", flush=True)
+    if piece.type == "content_block_stop" and piece.content_block.type == "text":
+        print()
+
+
+def run_command(command):
+    ran = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", command],   # resilience: a minute at most
+                         capture_output=True, text=True, errors="replace")                # resilience: odd bytes can't crash it
+    result = ran.stdout + ran.stderr or "(no output)"
+    if ran.returncode == 124:
+        result += "\n[stopped: it ran for over a minute]"
+    record(command=command, exit=ran.returncode)
+    print("  " + "\n  ".join(result.splitlines()[:10]))  # observability: what it did, not just what it ran
+    return trim(result)
+
+
+def trim(result):                                        # performance: keep the start and end of a long result
+    if len(result) <= MAX_RESULT:
+        return result
+    return f"{result[:MAX_RESULT // 2]}\n[... {len(result) - MAX_RESULT} characters cut ...]\n{result[-MAX_RESULT // 2:]}"
 
 
 def handle_output(response):
     tool_results = []
     for block in response.content:
-        if block.type == "text":
-            print("< " + block.text.replace("\n", "\n  "))
         if block.type == "tool_use":
-            command = block.input["command"]
+            command = block.input.get("command", "")
             print(f"$ {command}")
-            if allowed(command):                         # safety: in the box; resilience: stopped after a minute
-                ran = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", command], capture_output=True, text=True)
-                result = ran.stdout + ran.stderr or "(no output)"
-                if ran.returncode == 124:
-                    result += "\n[stopped: it ran for over a minute]"
-                record(command=command, exit=ran.returncode)
+            if response.stop_reason == "max_tokens" and block is response.content[-1]:
+                result = "[never ran: the request was cut off]"   # safety: half a command never runs
+            elif NEVER.search(command):
+                result = "[refused: never allowed]"     # safety: never, whatever anyone answers
+                record(command=command, refused="never")
+            elif allowed(command):
+                result = run_command(command)
             else:
-                result = "The person said no."
-                record(command=command, refused=True)
+                result = "[refused: the person said no]"
+                record(command=command, refused="no")
             tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
     return tool_results
 
 
-def allowed(command):                                    # safety: nothing runs without a yes
+# ── control flow ──────────────────────────────────────────────────────────────
+
+def allowed(command):                                    # safety: nothing else runs without a yes
     return input("  run this? [y/N] ").strip().lower() == "y"
 
 
@@ -256,44 +316,76 @@ def record(**step):                                      # observability: one li
         log.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 
 
-def resume():                                            # persistence: continue a session that ended mid-task
+def resume():                                            # persistence: pick up a session that ended mid-task
     global EPISODE
     episodes = sorted(glob.glob(".quark/episodes/*.jsonl"))
-    if not episodes or sys.argv[1:]:                     # evaluation: each request from the command line starts fresh
+    if not episodes:
         return []
     conversation = [json.loads(line) for line in open(episodes[-1])]
     last = conversation[-1]
-    unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or input("continue the unfinished session? [y/N] ").strip().lower() != "y":
+    unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"] if isinstance(block, dict))
+    if not unfinished or input(f"continue the unfinished session {conversation[0]['content'][:50]!r}? [y/N] ").strip().lower() != "y":
         return []
     EPISODE = episodes[-1]                               # carry on in the same file
-    if last["role"] == "assistant":                      # it stopped while commands were running
+    if last["role"] == "assistant":                      # commands were running when it stopped
         add(conversation, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
             "content": "[interrupted: it may or may not have run. Check before repeating it.]"} for block in last["content"] if block["type"] == "tool_use"]})
     return conversation
+
+
+def stopped(conversation, why):                          # safety: answer what never finished, then hand back
+    last = conversation[-1]
+    if last["role"] == "assistant":                      # it stopped while commands ran: each needs an answer
+        ids = [block.id for block in last["content"] if block.type == "tool_use"]
+        if ids:
+            add(conversation, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": i,
+                                                           "content": "[stopped before it finished]"} for i in ids]})
+    add(conversation, {"role": "assistant", "content": f"[{why}]"})
+    record(stopped=why)
+    print(f"[{why}]")
+
+
+def act(conversation):                                   # one request, carried through: go again while a tool ran
+    for step in range(MAX_STEPS):
+        started = time.time()
+        try:
+            response = request_response(assemble_context(conversation), show_text)
+        except BadRequestError as error:
+            if "prompt is too long" not in str(error):
+                raise
+            conversation[:] = summarize(conversation)
+            continue
+        usage = response.usage                           # observability: the tokens come from the end of the stream
+        record(model=response.model, seconds=round(time.time() - started, 1), tokens_in=usage.input_tokens,
+               written=usage.cache_creation_input_tokens, cached=usage.cache_read_input_tokens, tokens_out=usage.output_tokens)
+        if response.stop_reason is None:                 # persistence: a reply cut off is kept as what was said, marked
+            said = "".join(block.text for block in response.content if block.type == "text")
+            add(conversation, {"role": "assistant", "content": f"{said}\n[stopped by you]"})
+            record(stopped="stopped by you")
+            print("\n[stopped by you]")
+            return
+        add(conversation, {"role": "assistant", "content": response.content})   # on disk before any command runs
+        tool_results = handle_output(response)
+        if not tool_results:
+            return                                       # done: hand back to the person
+        add(conversation, {"role": "user", "content": tool_results})   # a tool ran: go again
+    stopped(conversation, f"stopped after {MAX_STEPS} steps")
 
 
 def control_flow():
     start_box()
     conversation = resume()
     while True:
-        if not conversation or conversation[-1]["role"] == "assistant":
+        if not conversation or conversation[-1]["role"] == "assistant":   # persistence: an unfinished task carries on
             add(conversation, {"role": "user", "content": capture_input()})
-        while True:
-            try:
-                response = request_response(assemble_context(conversation))
-            except BadRequestError as error:             # persistence: too long to send, so summarize and go again
-                if "prompt is too long" not in str(error):
-                    raise
-                conversation = summarize(conversation)
-                continue
-            add(conversation, {"role": "assistant", "content": response.content})
-            tool_results = handle_output(response)
-            if not tool_results:
-                break                                    # done: hand back to the person
-            add(conversation, {"role": "user", "content": tool_results})   # a tool ran: go again
+        try:
+            act(conversation)
+        except KeyboardInterrupt:                        # safety: Ctrl-C stops the command, and everything it started
+            subprocess.run(["docker", "exec", BOX, "kill", "-9", "-1"], capture_output=True)
+            stopped(conversation, "stopped by you")
         if sys.argv[1:]:
             break                                        # evaluation: a request from the command line runs once
 
 
-control_flow()
+if __name__ == "__main__":
+    control_flow()
