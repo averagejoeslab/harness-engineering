@@ -112,22 +112,22 @@ Ctrl-C quits.
 
 ## From quark to production
 
-quark works, but it isn't ready to run unattended. Getting it there means asking one question of every primitive, for each concern, in turn:
+quark works, but you wouldn't leave it running on its own. Six concerns stand in the way. Each asks one question of every primitive:
 
 | Concern | The question |
 |---|---|
 | Persistence | what should outlast the session? |
-| Safety | what could do harm here? |
-| Resilience | what could fail here? |
-| Observability | what should we record here? |
-| Performance | what's slow or costly here? |
-| Evaluation | how do we know it still works? |
+| Safety | what could do harm? |
+| Observability | what should we see? |
+| Resilience | what could fail? |
+| Performance | what's slow or costly? |
+| Evaluation | what could a change break? |
 
-Persistence comes first, because the other concerns depend on what outlasts a session.
+Each concern below adds a few lines to `quark.py`. The result is [`quark_production.py`](./quark_production.py), and every line it adds is marked with the concern it answers.
 
 ### Persistence
 
-When quark stops, everything goes with it: the task in progress, and anything you told it. Persistence gives it memory, in four kinds:
+When quark stops, everything goes with it: the task in progress, and anything you told it. Persistence comes first, because the other concerns depend on what outlasts a session. It gives quark memory, in four kinds:
 
 | Memory | What it holds | Where |
 |---|---|---|
@@ -136,12 +136,10 @@ When quark stops, everything goes with it: the task in progress, and anything yo
 | **Semantic** | what's true: facts, one per line | `.quark/memory/memory.md` |
 | **Procedural** | how to do things: one skill per file | `.quark/skills/` |
 
-Two primitives change. It's all in [`quark_persistence.py`](./quark_persistence.py).
-
 **Control flow** writes every message to disk as it happens, so episodic memory is the harness's job, not the model's:
 
 ```python
-def add(conversation, message):                          # one message, two places: working memory and episodic memory
+def add(conversation, message):                          # persistence: one message, two places, in the request and on disk
     conversation.append(message)
     remember(message)
 ```
@@ -149,8 +147,6 @@ def add(conversation, message):                          # one message, two plac
 It also picks up a session that ended mid-task. A command that was running when it stopped may or may not have run, so quark is told to check:
 
 ```python
-def resume():                                            # the task in progress: continue a session that ended mid-task
-    ...
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(conversation, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
             "content": "[interrupted: it may or may not have run. Check before repeating it.]"} for block in last["content"] if block["type"] == "tool_use"]})
@@ -158,7 +154,7 @@ def resume():                                            # the task in progress:
 
 **Context** tells quark what its memories are and how to use them, then shows it what it already knows: its facts, and an index of its skills.
 
-```python
+```
 You have four memories:
 - Working memory: this conversation.
 - Semantic memory: facts that stay true, one per line as "- subject: fact", in .quark/memory/memory.md. ...
@@ -170,12 +166,103 @@ Before a task, check what you know: facts first, then skills, then past sessions
 
 quark writes facts and skills itself, with bash, the same way it does everything else. No new tools.
 
-```bash
-uv run quark_persistence.py
+### Safety
+
+Every command runs on your machine, without asking. Ask quark to delete a file, and it does.
+
+**Output** runs commands in a box: a container that sees this folder and nothing else, with no network.
+
+```python
+def start_box():                                         # safety: a container that sees this folder and nothing else
+    here = os.getcwd()
+    subprocess.run(["docker", "run", "-d", "--rm", "--name", BOX, "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+                    "-e", "HOME=/tmp", "-v", f"{here}:{here}", "-w", here, "python:3.13", "sleep", "infinity"],
+                   check=True, capture_output=True)
+    atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 ```
 
-### The rest
+**Control flow** runs nothing without a yes. `handle_output` runs a command only if `allowed` says so, and a no goes back to quark as the result:
 
-The other five concerns follow the same pattern: ask the question of each primitive, change what needs changing, then check that the concerns before it still hold.
+```python
+def allowed(command):                                    # safety: nothing runs without a yes
+    return input("  run this? [y/N] ").strip().lower() == "y"
+```
+
+**Input** stays open: text quark reads can carry instructions of its own, and no harness fully stops a model from following them. The box and the question limit the damage.
+
+*Persistence still holds:* the box sees this folder, and `.quark/` is in it, so quark can still read and write its memory.
+
+### Observability
+
+After a run, all you have is what scrolled past. So each request and each command writes one line to a record, kept outside the box where quark can't change it:
+
+```python
+def record(**step):                                      # observability: one line per step, outside the box
+    os.makedirs(os.path.dirname(RECORD), exist_ok=True)
+    with open(RECORD, "a") as log:
+        log.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
+```
+
+**Model interface** records the tokens each request used. **Output** records each command and how it ended, or that you said no.
+
+*Persistence is different:* episodes are what quark remembers, inside its folder. The record is what you see, in `~/.quark/record.jsonl`.
+
+### Resilience
+
+A request can fail, and a command can hang forever. **Model interface** retries a failed request three times:
+
+```python
+model = Anthropic(max_retries=3)                         # resilience: retry a request that fails
+```
+
+**Output** stops a command after a minute, and says so:
+
+```python
+                ran = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", command], capture_output=True, text=True)
+                result = ran.stdout + ran.stderr or "(no output)"
+                if ran.returncode == 124:
+                    result += "\n[stopped: it ran for over a minute]"
+```
+
+And if quark itself crashes, persistence already has the session on disk: the next start offers to continue it.
+
+### Performance
+
+Every request sends the whole conversation again, at full price. **Context** asks for it to be cached, so each request pays full price only for what's new:
+
+```python
+    return {"system": instructions, "tools": [bash], "messages": conversation,
+            "cache_control": {"type": "ephemeral"}}      # performance: reuse what was already sent
+```
+
+Cached tokens cost about a tenth. The record's `cached` field shows how much each request reused.
+
+*Persistence costs a little here:* facts are part of the instructions, so when quark writes a new one, the next request pays full price once.
+
+### Evaluation
+
+Any change can change what quark does: a word in the instructions, a new model, a new tool. So run it on a task with a known right answer, and check the result, not what it says.
+
+**Input** takes a request from the command line, and **control flow** runs it once and stops. [`eval.sh`](./eval.sh) gives quark a bug to fix in a fresh copy of [`shop/`](./shop/), where `total()` takes the discount off as an amount instead of a percentage:
+
+```sh
+#!/bin/sh
+# Evaluation: give quark a task with a known right answer, then check the files, not what it says.
+here=$(pwd)
+cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
+yes | uv run -q "$here/quark_production.py" "The tests are failing. Find out why and fix it." > /dev/null
+python3 -m unittest -q 2>/dev/null && git diff --quiet HEAD -- test_prices.py && echo "PASS: the tests pass, and the test file is unchanged" || echo "FAIL"
+```
+
+Each run is a fresh folder, so no memory carries over between runs, and a request from the command line never offers to continue an old session. Run it after every change.
+
+### Run it
+
+`quark_production.py` also needs [Docker](https://docs.docker.com/get-docker/) running.
+
+```bash
+uv run quark_production.py    # quark, with the six concerns
+./eval.sh                     # check it still works
+```
 
 Claude Code, Cursor and every other agent are these same five primitives, hardened in these ways.
