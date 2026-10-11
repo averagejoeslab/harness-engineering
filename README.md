@@ -33,7 +33,7 @@ TokensIn ─► Model ─► predicted next token ────┤
 
 **TokensOut = Model(TokensIn)**
 
-That's all a model does. It can't capture its own inputs, choose what it's shown, act on its outputs, or define the loop.
+That's all a model does. It can't capture its own inputs, assemble what it's shown, act on its outputs, or define the loop.
 
 **The harness (the body)** does all of that. It captures inputs, assembles context, requests a response from the model, handles the model's outputs, and defines the shape of the loop. Here's the model's loop, inside the harness:
 
