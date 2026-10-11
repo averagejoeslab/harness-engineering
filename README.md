@@ -161,7 +161,7 @@ output = call(max_tokens=16384, tools=tools, messages=[{"role": "user", "content
 print(output.model_dump_json(indent=2))
 ```
 
-We also describe one tool to the model, `bash`, so it knows it can ask to run a command:
+We also include a description of one tool, `bash`, in what the model is shown, so it knows it can ask to run a command:
 
 ```python
 tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
@@ -523,8 +523,8 @@ A conversation ends, and everything in it is gone. So we give quark three places
 | What it keeps | Where | Who writes it |
 |---|---|---|
 | **A diary**: every message of every session | `.quark/episodes/` | the harness, as it happens |
-| **Facts**: what's true, one per line | `.quark/memory/memory.md` | quark |
-| **How-tos**: steps that worked, one per file | `.quark/skills/` | quark |
+| **Facts**: what's true, one per line | `.quark/memory/memory.md` | the model, by asking for a command |
+| **How-tos**: steps that worked, one per file | `.quark/skills/` | the model, by asking for a command |
 
 (These are what psychologists call episodic, semantic and procedural memory.)
 
@@ -541,7 +541,7 @@ def add(working_memory, message):                        # one message, two plac
     working_memory.append(message); remember(message)
 ```
 
-quark writes facts and how-tos itself, with ordinary commands. The instructions say how. The harness lists the how-tos at the top of every request, so quark knows what it already knows how to do:
+The model decides what's worth keeping, and asks for the command that writes it. Output runs it like any other. The instructions say how. The harness lists the how-tos at the top of every request, so quark knows what it already knows how to do:
 
 ```python
 def skills():                                            # procedural memory: an index built from each skill's front matter
@@ -609,7 +609,7 @@ This folder is a small shop pricing project (`prices.py` and `test_prices.py`) i
 
 ### 7. Keep it from overflowing
 
-The conversation is sent in full with every request, and it keeps growing. A long session will outgrow what the model can read. When it does, the model refuses the request. quark then sums up the older part and carries on. Nothing is lost: the diary still has every message, and the summary says where to find them.
+The conversation is sent in full with every request, and it keeps growing. A long session will outgrow what the model can read. When it does, the API rejects the request as too long. The harness then asks the model to sum up the older part, and carries on with the summary. Nothing is lost: the diary still has every message, and the summary says where to find them.
 
 ```python
 def compact(working_memory, drop):                       # lazy: runs only after the API says the prompt is too long
@@ -621,7 +621,7 @@ def compact(working_memory, drop):                       # lazy: runs only after
     return [{"role": "user", "content": f"[your earlier working memory, summarized; every original message is in {EPISODE}] {gist}"}]
 ```
 
-The loop sends it all, and calls `compact()` when the model refuses:
+The loop sends it all, and calls `compact()` when a request is rejected as too long:
 
 ```python
 working_memory, drop = [], 0
@@ -803,7 +803,7 @@ I can run `sleep 55` or another duration under a minute, which would finish. I c
 
 ### Why is it slow or costly?
 
-Every request sends the whole conversation again. Now the model is asked to remember what it's already seen, so each request pays full price only for what's new:
+Every request sends the whole conversation again. Now each request asks the API to keep what it has already processed, so the next request pays full price only for what's new:
 
 ```python
         response = call(show, max_tokens=16384, system=system(), tools=tools, messages=working_memory,
