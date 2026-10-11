@@ -2,11 +2,9 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-An agent has two parts: **a model** and **a harness**.
+To understand harness engineering, you first have to understand what an agent is. An agent has two primitives: **a model** and **a harness**.
 
 **Agent = Harness(Model)**
-
-This repo teaches the harness, end to end. You build one from scratch, one primitive at a time, until it's **quark**: a full agent with memory, skills and self-knowledge. Then you take it to production.
 
 ## The model
 
@@ -22,45 +20,44 @@ TokensIn ─► Model ─► most probable next token ─┤
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does.
+That's all it does. It can't read a file, run a command or remember yesterday. On its own, it only predicts what comes next.
 
 ## The harness
 
-The harness is everything else. It's been called a framework, a scaffold, a runtime and an orchestration layer, and the industry has mostly settled on *harness*.
+The harness is everything else. It's the body built around the model, through which the model perceives the world and acts on it.
 
-Think of the model as an engine. On its own, it just turns. The harness is the rest of the vehicle: it's what makes the engine go somewhere.
-
-Every harness does five things. These are its primitives:
-
-| Primitive | What it does |
-|---|---|
-| **Input** | captures what comes in: from a person, or from the world |
-| **Context** | assembles what the model is shown, and fits it in the space the model has |
-| **Model interface** | requests a response from the model |
-| **Output** | handles the response: shows it, or runs it as a tool |
-| **Control flow** | decides what happens next: go again, hand back, or stop |
-
-The model sits inside the harness, and control flow holds the other four:
+Here's the whole agent. The model, with its loop of predicting the next token, sits inside the harness:
 
 ```
-           ┌────────────────────────────── harness ───────────────────────────────┐
-           │ ┌────────────────────────── control flow ──────────────────────────┐ │
-           │ │                                                                  │ │
-person ────┼─┼─► input ─► context ─► model interface ─► output ─────────────────┼─┼──► person
-           │ │      ▲                   │      ▲            │                   │ │
-           │ │      │                   ▼      │            ▼                   │ │
-           │ │      │                 ┌──────────┐      runs a tool             │ │
-           │ │      │                 │  model   │          │                   │ │
-           │ │      │                 └──────────┘          │                   │ │
-           │ │      └────────────────── a tool's result ◄───┘                   │ │
-           │ │                                                                  │ │
-           │ └──────────────────────────────────────────────────────────────────┘ │
-           └──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  input ─► context ─► ┌───────── model ─────────┐ ─► output ─┬───┼─► person
+│    ▲                 │ tokens in ─► next token │            │   │
+│    │                 │      ▲            │     │            │   │
+│    │                 │      └── append ◄─┘     │            │   │
+│    │                 └─────────────────────────┘            │   │
+│    └───────────────────── a tool's result ◄─────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+What comes in, from a person or from the world, is **input**. **Context** assembles it into what the model is shown. The model predicts. **Output** shows what it said to a person, or runs it as a tool, and a tool's result comes back in as input. **Control flow** is the loop around all of it: go again, hand back, or stop. And the **model interface** is the connection between the body and the model: the request in and the response out.
+
+Those five are the harness's primitives:
+
+| Primitive | What it does | For the model |
+|---|---|---|
+| **Input** | captures what comes in: from a person, or from the world | perceiving |
+| **Context** | assembles what the model is shown, and fits it in the space the model has | what it has in mind, and what it remembers |
+| **Model interface** | requests a response from the model | the link between the body and the model |
+| **Output** | handles the response: shows it, or runs it as a tool | acting |
+| **Control flow** | decides what happens next: go again, hand back, or stop | the cycle of perceiving and acting |
+
+The model predicts; the harness gives that prediction a way to perceive and act. That's harness engineering: building the body around the model. It's been called a framework, a scaffold, a runtime and an orchestration layer, and the industry has mostly settled on *harness*.
 
 ## Building quark
 
-A quark is one of the smallest particles there is. **quark** is an agent built from the five primitives and nothing else. We'll build it one primitive at a time, outward from the model: reach it, give it input, handle its output, let it go again, then tell it what it is and let it remember.
+A quark is one of the smallest particles there is. **quark** is an agent built from the five primitives and nothing else. We'll build its body one primitive at a time, outward from the model: reach it, give it input, handle its output, let it go again, then tell it what it is and let it remember. Then we'll make it ready for production.
 
 Each step is a file, the one before it plus one primitive. You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/) exported as `ANTHROPIC_API_KEY`. Run each step from this folder, like `uv run 1_model_interface.py`.
 
@@ -68,17 +65,19 @@ The runs below are real. They were recorded in the repo quark was first built in
 
 ### 1. Model interface
 
-We have a model, and no way to reach it. So we request a response, in [`1_model_interface.py`](./1_model_interface.py):
+We have a model, and no way to reach it. So we request a response, in [`1_model_interface.py`](./1_model_interface.py). The model interface is the arrows into and out of the model:
 
 ```
-           ┌──────────────────────────── harness ─────────────────────────────┐
-           │                    model interface                               │
-           │                        │      ▲                                  │
-           │                        ▼      │                                  │
-           │                      ┌──────────┐                                │
-           │                      │  model   │                                │
-           │                      └──────────┘                                │
-           └──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  request ──────────► ┌───────── model ─────────┐ ─► response    │
+│                      │ tokens in ─► next token │                │
+│                      │      ▲            │     │                │
+│                      │      └── append ◄─┘     │                │
+│                      └─────────────────────────┘                │
+│                                                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ```python
@@ -129,14 +128,16 @@ Tokens in, tokens out. The model knows the right next step is `ls`. It just can'
 So we capture what comes in, in [`2_input.py`](./2_input.py):
 
 ```
-           ┌──────────────────────────── harness ─────────────────────────────┐
-person ────┼─► input ─────────► model interface                               │
-           │                        │      ▲                                  │
-           │                        ▼      │                                  │
-           │                      ┌──────────┐                                │
-           │                      │  model   │                                │
-           │                      └──────────┘                                │
-           └──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  input ────────────► ┌───────── model ─────────┐ ─► response    │
+│                      │ tokens in ─► next token │                │
+│                      │      ▲            │     │                │
+│                      │      └── append ◄─┘     │                │
+│                      └─────────────────────────┘                │
+│                                                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ```python
@@ -191,15 +192,16 @@ The model answered the only way it can: with a `tool_use` block asking to run `w
 So we handle the response: show its words as they're written, and run its commands. That's [`3_output.py`](./3_output.py):
 
 ```
-           ┌──────────────────────────── harness ─────────────────────────────┐
-person ────┼─► input ─────────► model interface ─► output ────────────────────┼──► person
-           │                        │      ▲            │                     │
-           │                        ▼      │            ▼                     │
-           │                      ┌──────────┐      runs a tool               │
-           │                      │  model   │          │                     │
-           │                      └──────────┘          ▼                     │
-           │                                    (its result goes nowhere)     │
-           └──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  input ────────────► ┌───────── model ─────────┐ ─► output ─┬───┼─► person
+│                      │ tokens in ─► next token │            │   │
+│                      │      ▲            │     │            │   │
+│                      │      └── append ◄─┘     │            │   │
+│                      └─────────────────────────┘            │   │
+│                      runs a tool; its result goes nowhere ◄─┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ```python
@@ -235,19 +237,16 @@ It acted. But the model never sees the 301. It's sitting in `input`, and nothing
 So we decide what happens next. If a tool ran, its result goes back and the model goes again. If not, it's your turn. That's [`4_control_flow.py`](./4_control_flow.py):
 
 ```
-           ┌────────────────────────────── harness ───────────────────────────────┐
-           │ ┌────────────────────────── control flow ──────────────────────────┐ │
-           │ │                                                                  │ │
-person ────┼─┼─► input ─────────► model interface ─► output ────────────────────┼─┼──► person
-           │ │      ▲                 │      ▲            │                     │ │
-           │ │      │                 ▼      │            ▼                     │ │
-           │ │      │               ┌──────────┐      runs a tool               │ │
-           │ │      │               │  model   │          │                     │ │
-           │ │      │               └──────────┘          │                     │ │
-           │ │      └──────────────── a tool's result ◄───┘                     │ │
-           │ │                                                                  │ │
-           │ └──────────────────────────────────────────────────────────────────┘ │
-           └──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  input ────────────► ┌───────── model ─────────┐ ─► output ─┬───┼─► person
+│    ▲                 │ tokens in ─► next token │            │   │
+│    │                 │      ▲            │     │            │   │
+│    │                 │      └── append ◄─┘     │            │   │
+│    │                 └─────────────────────────┘            │   │
+│    └───────────────────── a tool's result ◄─────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ```python
@@ -299,19 +298,16 @@ But it knows nothing. Not where it is, what day it is or who it is, and nothing 
 So before every call, we assemble what the model sees, and fit it in the space it has. That's [`quark.py`](./quark.py), the whole agent:
 
 ```
-           ┌────────────────────────────── harness ───────────────────────────────┐
-           │ ┌────────────────────────── control flow ──────────────────────────┐ │
-           │ │                                                                  │ │
-person ────┼─┼─► input ─► context ─► model interface ─► output ─────────────────┼─┼──► person
-           │ │      ▲                   │      ▲            │                   │ │
-           │ │      │                   ▼      │            ▼                   │ │
-           │ │      │                 ┌──────────┐      runs a tool             │ │
-           │ │      │                 │  model   │          │                   │ │
-           │ │      │                 └──────────┘          │                   │ │
-           │ │      └────────────────── a tool's result ◄───┘                   │ │
-           │ │                                                                  │ │
-           │ └──────────────────────────────────────────────────────────────────┘ │
-           └──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── harness ────────────────────────────┐
+│                                                                 │
+│  input ─► context ─► ┌───────── model ─────────┐ ─► output ─┬───┼─► person
+│    ▲                 │ tokens in ─► next token │            │   │
+│    │                 │      ▲            │     │            │   │
+│    │                 │      └── append ◄─┘     │            │   │
+│    │                 └─────────────────────────┘            │   │
+│    └───────────────────── a tool's result ◄─────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 Context is where most of an agent lives. quark's has eight components.
