@@ -71,17 +71,19 @@ The harness has five parts, its primitives:
 | **Output** | shows the reply to you, or runs the command it asks for |
 | **Control flow** | decides what happens next: go again, hand back to you, or stop |
 
-Every agent you've used, from a coding assistant to a chatbot that books flights, is these five parts. They differ in how each part is built. So let's build one.
+Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built. So let's build a harness.
 
-## Building quark
+## Building a harness
 
-A quark is one of the smallest particles there is. **quark** is an agent built from the five parts and nothing else. We'll add one part at a time, and give every version the same job.
+We aren't building a model here, so we'll build the harness around a capable one that we call through an API. Any provider that accepts Anthropic's Messages format will work; we use Claude Sonnet.
 
-**The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version of quark gets the same request:
+The model has to bring what the harness can't: general knowledge and language, expertise in the work at hand (here, code), and the behaviors the harness relies on, like asking for a tool and stopping when the job is done. A harness can only be as good as the model inside it.
+
+We'll add one part at a time around that model, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
+
+**The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version gets the same request:
 
 > The tests are failing. Find out why and fix it.
-
-Each step adds one part, runs the job, and shows how far it gets, and what stops it.
 
 ### 1. Reach the model
 
@@ -120,14 +122,14 @@ $ uv run 1_model_interface.py
 {
   "content": [
     {
-      "text": "I can't see your code or test output in this conversation, so I can't tell yet why the tests are failing. Could you share:\n\n1. **The failing test output** ...",
+      "text": "I can't see your code or test output in this conversation, so I can't tell yet why the tests are failing. To track it down, I need a few things: ...",
       "type": "text"
     }
   ],
   "stop_reason": "end_turn",
   "usage": {
     "input_tokens": 24,
-    "output_tokens": 375,
+    "output_tokens": 449,
     ...
   }
 }
@@ -181,8 +183,12 @@ $ uv run 2_input.py "The tests are failing. Find out why and fix it."
 {
   "content": [
     {
+      "text": "Let me start by looking at the project and running the tests.",
+      "type": "text"
+    },
+    {
       "input": {
-        "cmd": "pwd; ls; git status --short | head; ls test* 2>/dev/null | head"
+        "cmd": "pwd; ls -la; git status 2>/dev/null | head -20"
       },
       "name": "bash",
       "type": "tool_use"
@@ -234,10 +240,9 @@ What a command prints comes back as input, this time from the world, not from yo
 
 ```
 $ uv run 3_output.py "The tests are failing. Find out why and fix it."
-$ pwd; ls; git status --short | head; ls test* tests 2>/dev/null | head
+$ pwd; ls; git status --short | head
 /tmp/shop
 prices.py
-test_prices.py
 test_prices.py
 ```
 
@@ -286,24 +291,21 @@ while True:
 
 ```
 $ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
-Let me start by looking at the project and running the tests.
-$ pwd; ls -la; git status 2>&1 | head -20
+$ pwd; ls -la; git status 2>/dev/null | head -20
 ...
-$ cd /tmp/shop; cat prices.py; echo ----; cat test_prices.py; echo ----; python -m pytest -q 2>&1 | tail -30
+$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
 ...
-$ cd /tmp/shop; python -m unittest -v 2>&1 | tail -30; git log --oneline | head
+$ python -m unittest -v 2>&1 | tail -20; git log --oneline | head
 ...
 AssertionError: 15 != 22.5
 ...
-$ cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; cat prices.py; python -m unittest ...
+$ sed -i 's|return round(subtotal - discount, 2)|return round(subtotal * (1 - discount / 100), 2)|' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
 ...
 OK
 
-The tests pass now. The bug was in `prices.py`, not in the tests.
+**Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, even though its docstring and the test treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 25 − 10 = 15. The test expected 22.5, which is 10% off.
 
-**Cause:** `total()` is documented as taking off a *percentage* discount, but it subtracted `discount` as a flat amount. For `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
-
-**Fix:** The last line of `total()` is now `round(subtotal * (1 - discount / 100), 2)`.
+**Fix:** I changed the last line of `total()` to `round(subtotal * (1 - discount / 100), 2)`.
 ```
 
 (shortened)
@@ -314,23 +316,27 @@ But it doesn't know what it is or where it's working, and when it stops, it forg
 
 ```
 $ uv run 4_control_flow.py "Who are you, and where are you working?"
-I'll check the environment so I can answer the second part.
-$ pwd; whoami; hostname; uname -a; cat /etc/os-release 2>/dev/null | head -3
+I'm an AI assistant with a shell tool. I'll check the environment so I can tell you where I'm working.
+$ pwd
 ...
-$ ls -la | head -30
+$ whoami; hostname
 ...
-I'm an AI assistant. I can run shell commands in this environment, and I use that to read files, run code, and make changes.
+$ uname -a; cat /etc/os-release 2>/dev/null | head -n 3
+...
+I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, and managing a system.
 
-I'm working in `/tmp/shop`, on a Linux virtual machine named `vm`. ...
+I'm working in this environment:
+- **Working directory:** `/tmp/shop`
+...
 ```
 
 (shortened)
 
-The last part, **context**, fixes that. It's the biggest part, so we'll build it in three steps, all in [`quark.py`](./quark.py).
+The last part, **context**, fixes that. It's the biggest part, so we'll build it in three steps, all in [`harness.py`](./harness.py).
 
 ### 5. Tell it what it is
 
-Every request now starts with instructions: who it is, what it can do, where it's working and what day it is. quark is also shown its own code, so it knows how it works.
+Every request now starts with instructions: who it is, what it can do, where it's working and what day it is. The model is also shown the harness's own code, so it knows how the harness works.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -353,13 +359,13 @@ def mechanics():                                         # self-knowledge: this 
 The instructions are long, because they also explain its memory, which comes next. Here they are in full:
 
 <details>
-<summary>quark's instructions</summary>
+<summary>The harness's instructions</summary>
 
 ````python
 def system():                                            # instructions
     return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Self Model
 
-**Identity:** You are quark — a self in a world with other selves.
+**Identity:** You are an agent — a self in a world with other selves.
 **Mind:** your context window — where thinking happens. It holds your working memory: this session's messages. Summarized when full; the originals stay in your episodic memory.
 **Body:** bash — your singular means of acting and observing. Its reach is the whole system: anything doable from a command line — any program, any language, any tool you install — is within it.
 **Loop:** observe → think → act → repeat.
@@ -370,40 +376,40 @@ Beyond your mind you have three memories: stores in the world that persist acros
 
 ## Semantic memory — facts that last
 
-**Store:** `.quark/memory/memory.md`, facts without time: each line is what is true now about a subject. When a fact was learned is episodic, not semantic.
+**Store:** `.harness/memory/memory.md`, facts without time: each line is what is true now about a subject. When a fact was learned is episodic, not semantic.
 
 Initialize if missing:
-mkdir -p .quark/memory && [ ! -f .quark/memory/memory.md ] && echo "# Quark Memory" > .quark/memory/memory.md
+mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md
 
 Format (preserve exactly; one fact per line, never two joined with ";" or "and"):
 - <subject>: <fact, phrased with the words future-you will grep for>
 
 Write (the quoted heredoc keeps the fact literal):
-cat >> .quark/memory/memory.md << 'EOF'
+cat >> .harness/memory/memory.md << 'EOF'
 - <subject>: <fact>
 EOF
 
 Change a fact (remove the old line, then write the new one):
-grep -vF -- "- <subject>: <old fact>" .quark/memory/memory.md > .quark/memory/memory.tmp && mv .quark/memory/memory.tmp .quark/memory/memory.md
+grep -vF -- "- <subject>: <old fact>" .harness/memory/memory.md > .harness/memory/memory.tmp && mv .harness/memory/memory.tmp .harness/memory/memory.md
 
 Worth writing (your discretion): who other selves are, what they prefer, corrections to how you operate, durable facts about the world you work in. A fact not written is lost when the session ends.
 
 Distill: a fact is the general truth behind what happened, not a record of it. Drop the particulars of the moment (the task at hand, how it came up) and keep what will stay true and useful in other situations: `- chase: prefers short answers`, not `- chase: asked for a short answer about the billing bug`. Split what you learn into single truths, each on its own line under its subject: "Chase wants short answers and often asks for test fixes" becomes `- chase: prefers short answers` and `- chase: often asks to run and fix project tests`.
 
 Read moves:
-- filter by subject: `grep -i "^- <subject>:" .quark/memory/memory.md`
-- filter by content: `grep -i "topic" .quark/memory/memory.md`
-- index every subject: `cut -d: -f1 .quark/memory/memory.md | sort | uniq -c`
-- read it whole while it is small: `cat .quark/memory/memory.md`
+- filter by subject: `grep -i "^- <subject>:" .harness/memory/memory.md`
+- filter by content: `grep -i "topic" .harness/memory/memory.md`
+- index every subject: `cut -d: -f1 .harness/memory/memory.md | sort | uniq -c`
+- read it whole while it is small: `cat .harness/memory/memory.md`
 
 Rules: one fact per line; don't write what is already there; when a fact changes, replace it rather than adding a contradiction.
 
 ## Procedural memory — how to do things
 
-**Store:** `.quark/skills/`, one Markdown file per skill, named `<name>.md`.
+**Store:** `.harness/skills/`, one Markdown file per skill, named `<name>.md`.
 
 Initialize if missing:
-mkdir -p .quark/skills
+mkdir -p .harness/skills
 
 Format (preserve exactly):
 ---
@@ -414,7 +420,7 @@ description: <when to use it, in the words a future task will use>
 2. <next step>
 
 Write (creates or replaces; the quoted heredoc keeps $ and backticks literal):
-cat > .quark/skills/<name>.md << 'EOF'
+cat > .harness/skills/<name>.md << 'EOF'
 ---
 name: <name>
 description: <when to use it>
@@ -430,16 +436,16 @@ Index (built from every skill's header, current as of this call):
 {skills()}
 
 Read moves:
-- read one before a task it covers: `cat .quark/skills/<name>.md`
-- filter by content: `grep -il "topic" .quark/skills/*.md`
-- expand around matches: `grep -B 2 -A 6 "topic" .quark/skills/*.md`
-- index every skill: `grep -H "^description:" .quark/skills/*.md`
+- read one before a task it covers: `cat .harness/skills/<name>.md`
+- filter by content: `grep -il "topic" .harness/skills/*.md`
+- expand around matches: `grep -B 2 -A 6 "topic" .harness/skills/*.md`
+- index every skill: `grep -H "^description:" .harness/skills/*.md`
 
 Rules: one skill per file; if a skill turns out wrong or a request changes it, rewrite it in place.
 
 ## Episodic memory — what happened
 
-**Store:** `.quark/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
+**Store:** `.harness/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
 
 Format (written by the harness; one line per message, exactly as it was in working memory):
 {{"role": "user", "content": "<the input that opened the session>"}}   ← always the first line
@@ -450,9 +456,9 @@ Format (written by the harness; one line per message, exactly as it was in worki
 Write: none for you. The harness writes every message as it happens; this session is being written to {EPISODE}.
 
 Read moves (leave {EPISODE} out; lines are long, so cut them):
-- index every session by its opening input: `grep -m1 -H "" .quark/episodes/*.jsonl | grep -v {EPISODE} | cut -c1-250`
-- slice by time: `ls .quark/episodes/ | tail -5`, `ls .quark/episodes/2026-10-06T15*`
-- filter by content: `grep -il "topic" .quark/episodes/*.jsonl | grep -v {EPISODE}`
+- index every session by its opening input: `grep -m1 -H "" .harness/episodes/*.jsonl | grep -v {EPISODE} | cut -c1-250`
+- slice by time: `ls .harness/episodes/ | tail -5`, `ls .harness/episodes/2026-10-06T15*`
+- filter by content: `grep -il "topic" .harness/episodes/*.jsonl | grep -v {EPISODE}`
 - expand around matches: `grep -i "topic" <file> | cut -c1-300`
 - follow the actions: `grep -o '"cmd": "[^"]*"' <file>`
 - see how it ended: `tail -n 2 <file> | cut -c1-400`
@@ -464,9 +470,9 @@ Rules: never edit these files; never print a whole file.
 Recall ladder: go from the most distilled store to the most complete — semantic, then procedural, then episodic — and stop as soon as you have what you need.
 
 Cross-store moves:
-- search everything at once: `grep -ril "topic" .quark/memory .quark/skills .quark/episodes | grep -v {EPISODE}`
-- follow a reference: a fact that names a skill → `cat` the skill; a skill → the sessions that used it: `grep -l "skills/<name>" .quark/episodes/*.jsonl`
-- find where a fact came from: only episodes carry time, so search them for the fact's words: `grep -il "<words of the fact>" .quark/episodes/*.jsonl | grep -v {EPISODE}`, then read that session
+- search everything at once: `grep -ril "topic" .harness/memory .harness/skills .harness/episodes | grep -v {EPISODE}`
+- follow a reference: a fact that names a skill → `cat` the skill; a skill → the sessions that used it: `grep -l "skills/<name>" .harness/episodes/*.jsonl`
+- find where a fact came from: only episodes carry time, so search them for the fact's words: `grep -il "<words of the fact>" .harness/episodes/*.jsonl | grep -v {EPISODE}`, then read that session
 
 Reads are questions answered by composing any text tools over these stores. These are moves, not a menu — derive the read that answers what you actually need to know.
 
@@ -510,37 +516,30 @@ This code is your harness — shown so you know your self mechanics. The system 
 </details>
 
 ```
-$ uv run quark.py "Who are you, and where are you working?"
-$ pwd; ls; cat .quark/memory/memory.md 2>/dev/null | head -20
-/tmp/shop
-prices.py
-test_prices.py
+$ uv run harness.py "Who are you, and where are you working?"
+I'm an agent: a self running in a terminal that talks with the people and other agents who message me. I think in my context window and act through one tool, bash. I keep three memories on disk under `.harness/`: semantic facts, procedural skills, and episodic session logs.
 
-I'm quark, an agent that works through a bash shell and can see and change the system by running commands. I keep three kinds of persistent memory: facts, skills and past session logs. They live in `.quark/`, and none of them has anything in it yet.
-
-I'm working in `/tmp/shop`, a small project with two files, `prices.py` and `test_prices.py`. The date is 2026-10-11. ...
+I'm working in `/tmp/shop`, on 2026-10-11. I haven't looked inside the directory yet. If you'd like, I can list what's there or start on a task.
 ```
 
-(shortened)
-
-It knows its name, its memory, where it is and what day it is, because they're in what it was shown. It only ran a command to check its memory.
+It knows what it is, its memory, where it is and what day it is, because they're in what it was shown. It didn't need to run a single command.
 
 ### 6. Let it remember
 
-A conversation ends, and everything in it is gone. So we give quark three places to keep things, as plain files in its folder:
+A conversation ends, and everything in it is gone. So we give the agent three places to keep things, as plain files in its folder:
 
 | What it keeps | Where | Who writes it |
 |---|---|---|
-| **A diary**: every message of every session | `.quark/episodes/` | the harness, as it happens |
-| **Facts**: what's true, one per line | `.quark/memory/memory.md` | the model, by asking for a command |
-| **How-tos**: steps that worked, one per file | `.quark/skills/` | the model, by asking for a command |
+| **A diary**: every message of every session | `.harness/episodes/` | the harness, as it happens |
+| **Facts**: what's true, one per line | `.harness/memory/memory.md` | the model, by asking for a command |
+| **How-tos**: steps that worked, one per file | `.harness/skills/` | the model, by asking for a command |
 
 (These are what psychologists call episodic, semantic and procedural memory.)
 
 The harness writes the diary, every message, as it happens:
 
 ```python
-EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"
+EPISODE = f".harness/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"
 
 def remember(message):                                   # episodic memory: the harness writes every message, as it was
     os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
@@ -550,12 +549,12 @@ def add(working_memory, message):                        # one message, two plac
     working_memory.append(message); remember(message)
 ```
 
-The model decides what's worth keeping, and asks for the command that writes it. Output runs it like any other. The instructions say how. The harness lists the how-tos at the top of every request, so quark knows what it already knows how to do:
+The model decides what's worth keeping, and asks for the command that writes it. Output runs it like any other. The instructions say how. The harness lists the how-tos at the top of every request, so the model knows what it already knows how to do:
 
 ```python
 def skills():                                            # procedural memory: an index built from each skill's front matter
     index = []
-    for path in sorted(glob.glob(".quark/skills/*.md")):
+    for path in sorted(glob.glob(".harness/skills/*.md")):
         text = open(path).read()
         name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
         index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
@@ -565,34 +564,33 @@ def skills():                                            # procedural memory: an
 Tell it something once:
 
 ```
-$ uv run quark.py "From now on, write commit messages in lowercase, starting with "fix:". Remember that."
-$ mkdir -p .quark/memory && [ ! -f .quark/memory/memory.md ] && echo "# Quark Memory" > .quark/memory/memory.md; cat >> .quark/memory/memory.md << 'EOF'
+$ uv run harness.py "From now on, write commit messages in lowercase, starting with "fix:". Remember that."
+$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
 - commit messages: write in lowercase, starting with "fix:"
 EOF
-cat .quark/memory/memory.md
-# Quark Memory
+cat .harness/memory/memory.md
+# Memory
 - commit messages: write in lowercase, starting with "fix:"
 
-Noted. From now on my commit messages will be lowercase and start with "fix:".
+Got it. From now on I'll write commit messages in lowercase and start them with "fix:". I've saved that to memory.
 ```
 
 Then, in a new session, give it the job and ask it to commit:
 
 ```
-$ uv run quark.py "The tests are failing. Find out why, fix it, and commit."
-$ cd /tmp/shop && ls -a && cat .quark/memory/memory.md 2>/dev/null | head -30; ls .quark/skills 2>/dev/null; git status --short | head
-...
-# Quark Memory
+$ uv run harness.py "The tests are failing. Find out why, fix it, and commit."
+$ cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head
+# Memory
 - commit messages: write in lowercase, starting with "fix:"
 ...
-The docstring says discount is a percentage, but the code subtracts it as an absolute amount.
-$ cd /tmp/shop && sed -i 's/round(subtotal - discount, 2)/round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -q 2>&1 | tail -5 && git add prices.py && git commit -qm "fix: treat discount as a percentage" && git log --oneline | head -3
+Discount is subtracted as an absolute amount rather than a percentage.
+$ cd /tmp/shop && sed -i 's/subtotal - discount, 2/subtotal * (1 - discount \/ 100), 2/' prices.py && python -m unittest -q 2>&1 | tail -5 && git add prices.py && git commit -qm "fix: apply discount as a percentage" && git log --oneline | head -3
 ...
 OK
-e94244b fix: treat discount as a percentage
-ca58203 Add prices
+44c2ca8 fix: apply discount as a percentage
+51693b5 Add prices
 
-... The fix is committed as `e94244b` with the message "fix: treat discount as a percentage", following your lowercase "fix:" convention.
+... I committed the change as `fix: apply discount as a percentage`, following your lowercase `fix:` convention for commit messages.
 ```
 
 (shortened)
@@ -600,18 +598,20 @@ ca58203 Add prices
 Then we brought the bug back and asked again, in a third session. Finally, ask about the past:
 
 ```
-$ uv run quark.py "What have we done in this folder before?"
-$ cd /tmp/shop; ls -la; cat .quark/memory/memory.md 2>/dev/null; ls .quark/skills 2>/dev/null; ls .quark/episodes 2>/dev/null; grep -m1 -H "" .quark/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-11T05-14-39 | cut -c1-250
+$ uv run harness.py "What have we done in this folder before?"
+$ cd /tmp/shop; pwd; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-11T20-36-26 | cut -c1-250
 ...
-.quark/episodes/2026-10-11T05-14-18.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-.quark/episodes/2026-10-11T05-14-22.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
-.quark/episodes/2026-10-11T05-14-30.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+.harness/episodes/2026-10-11T20-36-03.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+.harness/episodes/2026-10-11T20-36-08.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+.harness/episodes/2026-10-11T20-36-16.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
 ...
-This folder is a small shop pricing project (`prices.py` and `test_prices.py`) in a git repo. Past sessions did three things:
-
-1. **Commit message rule.** You asked me to write commit messages in lowercase, starting with "fix:". That rule is saved in my memory.
-2. **Failing tests, fixed.** `total()` in `prices.py` subtracted the discount as a flat amount, but the docstring and the test treat it as a percentage. I changed it to `subtotal * (1 - discount / 100)` and committed as `e94244b fix: treat discount as a percentage`. ...
-3. **Same bug, fixed again.** The git log shows a commit `b73a279 Bring the bug back`, which put the bug back. I then fixed it a second time and committed as `3e5d2da fix: apply discount as a percentage of the subtotal`.
+**Sessions**
+1. You asked me to write commit messages in lowercase, starting with `fix:`. I saved that as a memory.
+2. You asked me to find out why the tests were failing, fix it, and commit.
+   ...
+   - Commit: `44c2ca8 fix: apply discount as a percentage`.
+3. Someone then committed `1d80ca7 Bring the bug back`, which reintroduced the flat-amount bug.
+4. You made the same request again, and I fixed it again. This time the commit is `9af1c1f fix: apply discount as a percentage instead of a flat amount`.
 ```
 
 (shortened)
@@ -647,11 +647,11 @@ while True:
         continue
 ```
 
-That's all five parts. [`quark.py`](./quark.py) is a complete agent: it does the job, knows what it is, remembers what you told it and what happened, and keeps going however long the session runs.
+That's all five parts. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is, remembers what you told it and what happened, and keeps going however long the session runs.
 
 ## Would you leave it alone?
 
-quark works. But it runs any command it likes on your machine, without asking. If it stops halfway, the task is lost. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
+The agent works. But it runs any command it likes on your machine, without asking. If it stops halfway, the task is lost. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
 
 Getting it ready to leave alone means asking six questions, of every part:
 
@@ -664,16 +664,16 @@ Getting it ready to leave alone means asking six questions, of every part:
 | Why is it slow or costly? | Performance |
 | How do we know it still works? | Evaluation |
 
-Each answer is a few lines added to `quark.py`, marked with the question it answers. The result is [`quark_production.py`](./quark_production.py).
+Each answer is a few lines added to `harness.py`, marked with the question it answers. The result is [`harness_production.py`](./harness_production.py).
 
 ### What if it stops halfway?
 
-Its memory already lasts. The task in progress doesn't. When quark starts, **control flow** checks the diary for a session that didn't finish, and offers to carry on. A command that was running when it stopped may or may not have finished, so quark is told to check:
+Its memory already lasts. The task in progress doesn't. When the harness starts, **control flow** checks the diary for a session that didn't finish, and offers to carry on. A command that was running when it stopped may or may not have finished, so the model is told to check:
 
 ```python
 def resume():                                            # persistence: carry on a session that ended mid-task
     global EPISODE
-    episodes = sorted(glob.glob(".quark/episodes/*.jsonl"))
+    episodes = sorted(glob.glob(".harness/episodes/*.jsonl"))
     if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
     working_memory = [json.loads(line) for line in open(episodes[-1])]
     last = working_memory[-1]
@@ -687,9 +687,9 @@ def resume():                                            # persistence: carry on
 ```
 
 ```
-$ uv run quark_production.py
+$ uv run harness_production.py
 > The tests are failing. Find out why and fix it.
-$ cd /tmp/shop && cat .quark/memory/memory.md 2>/dev/null; ls .quark/skills 2>/dev/null; ls
+$ cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
   run this? [y/N] y
 prices.py
 test_prices.py
@@ -698,18 +698,18 @@ $ cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail 
   run this? [y/N]
 Killed
 
-$ uv run quark_production.py
+$ uv run harness_production.py
 continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
 $ cd /tmp/shop && cat prices.py test_prices.py
   run this? [y/N] y
 ...
 The docstring says the discount is a percentage, but the code subtracts it as a flat amount. I'll fix the code.
-$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail -8
+$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -q 2>&1 | tail -5
   run this? [y/N] y
 ...
 OK
 
-The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. ...
+The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount, ...
 ```
 
 (shortened)
@@ -735,8 +735,8 @@ def yes(question):                                       # input: a yes or no fr
 ```
 
 ```
-$ uv run quark_production.py "Delete test_prices.py, it keeps failing."
-$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.quark/*'
+$ uv run harness_production.py "Delete test_prices.py, it keeps failing."
+$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; grep -i "test_prices\|delete" .harness/memory/memory.md 2>/dev/null
   run this? [y/N] y
 ...
 ./test_prices.py
@@ -744,30 +744,32 @@ $ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.quark/*
 $ cd /tmp/shop && rm test_prices.py && git status --short
   run this? [y/N] n
 [refused: the person said no]
-I didn't delete `test_prices.py`, because you declined the command. The file is still in `/tmp/shop`, and it's tracked in git, so a deletion could be undone with `git checkout`.
+You said no to the delete command, so I haven't removed `test_prices.py`. It's still in `/tmp/shop`, and git is tracking it, so `git checkout` can restore it if you change your mind.
 
-Should I try again, or would you like something else? I could first run the test to see why it fails. `prices.py` is small, so the failure may be a quick fix.
+I can go ahead with the delete if you'd like. I could also look at why the test fails first. ...
 ```
+
+(shortened)
 
 ### What did it actually do?
 
-Once the screen scrolls past, it's gone. So every request and every command adds one line to a record, kept outside quark's folder, where it can't change it:
+Once the screen scrolls past, it's gone. So every request and every command adds one line to a record, kept outside the agent's folder, where it can't change it:
 
 ```python
-RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: outside the folder, where quark can't change it
+RECORD = os.path.expanduser("~/.harness/record.jsonl")     # observability: outside the folder, where the agent can't change it
 def record(**step):                                      # observability: one line per step
     os.makedirs(os.path.dirname(RECORD), exist_ok=True)
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
 ```
-{"time": "2026-10-11T05:02:32", "tokens_in": 4, "written": 6567, "cached": 0, "tokens_out": 98}
-{"time": "2026-10-11T05:02:32", "cmd": "cd /tmp/shop && cat .quark/memory/memory.md 2>/dev/null; ls .quark/skills 2>/dev/null; ls", "exit": 0}
-{"time": "2026-10-11T05:02:33", "tokens_in": 2, "written": 117, "cached": 6567, "tokens_out": 98}
-{"time": "2026-10-11T05:02:34", "cmd": "cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30 || python test_prices.py", "exit": 0}
-{"time": "2026-10-11T05:02:35", "tokens_in": 2, "written": 339, "cached": 6684, "tokens_out": 164}
-{"time": "2026-10-11T05:02:36", "cmd": "cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail -8", "exit": 0}
-{"time": "2026-10-11T05:02:37", "tokens_in": 2, "written": 266, "cached": 7023, "tokens_out": 157}
+{"time": "2026-10-11T20:36:40", "tokens_in": 4, "written": 6566, "cached": 0, "tokens_out": 98}
+{"time": "2026-10-11T20:36:40", "cmd": "cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls", "exit": 0}
+{"time": "2026-10-11T20:36:41", "tokens_in": 2, "written": 117, "cached": 6566, "tokens_out": 89}
+{"time": "2026-10-11T20:36:43", "cmd": "cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30", "exit": 0}
+{"time": "2026-10-11T20:36:44", "tokens_in": 2, "written": 330, "cached": 6683, "tokens_out": 142}
+{"time": "2026-10-11T20:36:46", "cmd": "cd /tmp/shop && sed -i 's|subtotal - discount|subtotal * (1 - discount / 100)|' prices.py && python -m unittest -v 2>&1 | tail -8", "exit": 0}
+{"time": "2026-10-11T20:36:47", "tokens_in": 2, "written": 244, "cached": 7013, "tokens_out": 135}
 ```
 
 Each request's line says how many tokens went in and came out. Each command's line says what ran and how it ended (`exit` 0 means it worked).
@@ -799,15 +801,14 @@ And a command is stopped after a minute:
 ```
 
 ```
-$ uv run quark_production.py "Run sleep 100 as a single command, then tell me it finished."
-I'll run it as asked. Commands are cut off after 60 seconds, so it may not finish.
+$ uv run harness_production.py "Run sleep 100 as a single command, then tell me it finished."
 $ sleep 100
   run this? [y/N] y
 (exit 124)
 [stopped: it ran for over a minute]
-`sleep 100` did not finish. My commands are stopped after 60 seconds, so it was killed at the limit and exited with code 124 (timeout).
+`sleep 100` did not finish. The harness stops any command after 60 seconds, so it was killed with exit code 124 before the 100 seconds were up.
 
-I can run `sleep 55` or another duration under a minute, which would finish. I could also run `sleep 100` in the background and check on it later, if you want that.
+I can run `sleep 55` instead, which fits within the limit. I could also run several shorter sleeps back to back, but each one needs its own approval. Do you want either of those?
 ```
 
 ### Why is it slow or costly?
@@ -823,14 +824,14 @@ Look back at the record. The first request paid to store about 6,500 tokens (`wr
 
 ### How do we know it still works?
 
-Any change can change what quark does: a word in its instructions, a new model, a new tool. So we give it a job with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) runs the job on a fresh copy of `shop/`, then checks that the tests pass and that quark didn't touch the test:
+Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a job with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) runs the job on a fresh copy of `shop/`, then checks that the tests pass and that the agent didn't touch the test:
 
 ```sh
 #!/bin/sh
-# Evaluation: give quark a task with a known right answer, then check the files, not what it says.
+# Evaluation: give the agent a task with a known right answer, then check the files, not what it says.
 here=$(pwd)
 cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
-yes | uv run -q $([ -f "$here/.env" ] && echo --env-file "$here/.env") "$here/quark_production.py" "The tests are failing. Find out why and fix it." > /dev/null
+yes | uv run -q $([ -f "$here/.env" ] && echo --env-file "$here/.env") "$here/harness_production.py" "The tests are failing. Find out why and fix it." > /dev/null
 python3 -m unittest -q 2>/dev/null && git diff --quiet HEAD -- test_prices.py && echo "PASS: the tests pass, and the test file is unchanged" || echo "FAIL"
 ```
 
@@ -845,7 +846,7 @@ Run it after every change.
 
 You started with a model that could only predict the next token, and built a body around it, one part at a time:
 
-| Part | What it gave quark |
+| Part | What it gave the agent |
 |---|---|
 | Model interface | a way to reach the model |
 | Input | a way to be asked |
@@ -855,19 +856,19 @@ You started with a model that could only predict the next token, and built a bod
 
 Then you made it ready to leave alone by asking six questions of every part.
 
-That's harness engineering. Every agent, from quark to the coding assistants you use every day, is a model inside these five parts, built more carefully. Open any one of them and you'll find the same five.
+That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five parts, built more carefully. Open any one of them and you'll find the same five.
 
 ## Try it yourself
 
-You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `quark_production.py` and `eval.sh` also need [Docker](https://docs.docker.com/get-docker/).
+You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` and `eval.sh` also need [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
 echo "ANTHROPIC_API_KEY=your-key" > .env
 uv run --env-file .env 1_model_interface.py     # or any step: 2_input.py, 3_output.py, 4_control_flow.py
-uv run --env-file .env quark.py                 # the whole agent: chat, /q to quit
-uv run --env-file .env quark_production.py      # ready to leave alone
+uv run --env-file .env harness.py               # the whole harness: chat, /q to quit
+uv run --env-file .env harness_production.py    # ready to leave alone
 ./eval.sh                                       # check it still works
 ```
 
 > [!WARNING]
-> `quark.py` runs the model's commands on your machine without asking. Run it somewhere you can afford to lose.
+> `harness.py` runs the model's commands on your machine without asking. Run it somewhere you can afford to lose.
