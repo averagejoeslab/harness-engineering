@@ -2,7 +2,7 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-An agent is a system that perceives its environment, decides what to do, and acts on it, in a loop, until its goal is met.
+To understand harness engineering, you first have to understand what an agent is. An agent is a system that perceives its environment, decides what to do, and acts on it, in a loop, until its goal is met.
 
 It has two primitives:
 
