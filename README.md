@@ -38,7 +38,7 @@ So everything a model does fits in one function: it takes tokens in and gives to
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Everything it reads has to be handed to it, and everything it writes has to be turned into actions. That's the harness's job.
+Given an input a model can produce an output. A model can't actually capture the inputs, it can't act on the outputs, it can't determine the flow. All of these things are the job of the harness.
 
 ## The harness
 
