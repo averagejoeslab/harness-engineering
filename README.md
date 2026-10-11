@@ -2,14 +2,23 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-To understand harness engineering, you first have to understand what an agent is. An agent is a system that perceives its environment, decides what to do, and acts on it, in a loop, until its goal is met.
+To understand harness engineering, you first have to understand what an agent is.
 
-It has two primitives:
+An agent is a system that can:
 
-- **The model:** turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
-- **The harness:** captures input, assembles context, requests a response from the model, handles the output, and decides what happens next.
+- observe what's around it
+- think about what it observed
+- act on what it decided
+- repeat until its goal is met
 
-Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to decide what it should do. Together they close the loop: perceive, decide, act, then perceive what happened.
+In short: observe → think → act, and repeat.
+
+An agent does this with two primitives:
+
+- **The model (the mind)** does the thinking. It turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
+- **The harness (the body)** does the observing and acting, and runs the loop. It captures input, assembles context, requests a response from the model, handles the output, and decides what happens next.
+
+Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to think about what to do. Together they close the loop: observe, think, act, then observe what happened.
 
 I like to sum the idea up as one equation: an agent is a harness wrapped around a model, much like a body is wrapped around a mind.
 
@@ -37,7 +46,7 @@ That's all it does. It can write the tokens for a command, but it can't run one.
 
 ## The harness
 
-Here's the same loop, inside the harness. The harness hands the model what it perceives, and acts on what the model writes:
+Here's the same loop, inside the harness. The harness hands the model what it observes, and acts on what the model writes:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
