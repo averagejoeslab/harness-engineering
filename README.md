@@ -6,8 +6,8 @@ To understand harness engineering, you first have to understand what an agent is
 
 It has two primitives:
 
-- **The model decides.** Tokens go in, and it predicts the next one. That's all it can do.
-- **The harness perceives and acts.** It's the body around the model: it turns the world into tokens the model can read, and turns the tokens the model writes into actions.
+- **The model:** predicts the next token from the tokens it's given.
+- **The harness:** turns the world into tokens for the model, and the model's tokens into actions.
 
 Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to decide what it should do. Together they close the loop: perceive, decide, act, then perceive what happened.
 
