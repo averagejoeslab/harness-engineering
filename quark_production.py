@@ -13,7 +13,7 @@ RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: where 
 
 
 def capture_input():
-    return " ".join(sys.argv[1:]) or input("> ")        # evaluation: a request can come from the command line
+    return " ".join(sys.argv[1:]) or input("\n> ")      # evaluation: a request can come from the command line
 
 
 def remember(message):                                   # persistence: episodic memory, every message as it happens
@@ -80,7 +80,7 @@ def handle_output(response):
     tool_results = []
     for block in response.content:
         if block.type == "text":
-            print(block.text)
+            print("< " + block.text.replace("\n", "\n  "))
         if block.type == "tool_use":
             command = block.input["command"]
             print(f"$ {command}")
