@@ -66,7 +66,7 @@ Every agent you've used, from a coding assistant to a chatbot that books flights
 
 ## Building a Harness
 
-Building a harness starts with what you want the agent to do. Research models for that work: what each knows, how it behaves, and so what it's likely to be good at. Then shape the harness around the one you pick, because the best bodies are shaped by the mind inside them.
+Building a harness starts with what you want the agent to do. Research models for that work: what each knows, how it behaves, and based on that assume what it's likely to do well. Then shape the harness around the model you pick, because the best bodies are shaped by the mind inside them.
 
 We'll use Claude Sonnet, called through an API; any provider that accepts Anthropic's Messages format will work. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer like a person, except it will do everything using the shell because I am making a wager that through the shell all things are possible.
 
