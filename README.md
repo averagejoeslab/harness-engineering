@@ -60,7 +60,7 @@ The harness itself can be reduced to five primitives:
 | **Context** | assembles what the model is shown (e.g. instructions, the message) |
 | **Model interface** | requests a response from the model |
 | **Output** | handles the model's outputs (e.g. a reply, an action) |
-| **Control flow** | defines the shape of the loop: go again, hand back, or stop |
+| **Control flow** | defines the shape of the loop (e.g. go again, hand back, stop) |
 
 Neither the model nor the harness is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
 
