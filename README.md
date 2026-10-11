@@ -2,7 +2,7 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-To understand harness engineering, you first have to understand what an agent is. An agent has two primitives: **a model** and **a harness**.
+To understand harness engineering, you first have to understand what an agent is. An agent is a system that perceives its environment, decides what to do, and acts on it, again and again, to reach a goal. An agent has two primitives: **a model** and **a harness**.
 
 **Agent = Harness(Model)**
 
