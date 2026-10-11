@@ -6,8 +6,8 @@ To understand harness engineering, you first have to understand what an agent is
 
 It has two primitives:
 
-- **The model:** predicts the next token from the tokens it's given.
-- **The harness:** turns the world into tokens for the model, and the model's tokens into actions.
+- **The model:** turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
+- **The harness:** captures input, assembles context, requests a response from the model, handles the output, and decides what happens next.
 
 Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to decide what it should do. Together they close the loop: perceive, decide, act, then perceive what happened.
 
@@ -33,7 +33,7 @@ So everything a model does fits in one function: it takes tokens in and gives to
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Every token it reads has to be handed to it, and every token it writes has to be turned into something that happens. That's the harness's job.
+That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Everything it reads has to be handed to it, and everything it writes has to be turned into something that happens. That's the harness's job.
 
 ## The harness
 
