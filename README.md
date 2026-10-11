@@ -70,7 +70,7 @@ Building a harness starts with what you want the agent to do. You pick a model w
 
 To know a model, research it. What does it know? How does it behave? From those, what is it likely to be good at?
 
-We'll use Claude Sonnet, called through an API; any provider that accepts Anthropic's Messages format will work. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer through its shell, so it can do anything a person could do from a command line.
+We'll use Claude Sonnet, called through an API; any provider that accepts Anthropic's Messages format will work. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer like a person, except it will do everything using the shell because I am making a wager that through the shell all things are possible.
 
 We aren't building the model, only the body around it. We'll add one primitive at a time, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
 
