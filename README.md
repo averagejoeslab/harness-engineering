@@ -35,17 +35,17 @@ So everything a model does fits in one function: tokens in, tokens out.
 
 Given an input, it produces an output, and that's all. It can't capture its own inputs, choose what it's shown, act on its outputs, or define the loop.
 
-**The harness (the body)** does all of that. It captures the inputs, chooses what to show, acts on the outputs, and defines the loop. Here's the model's loop, inside the harness:
+**The harness (the body)** does all of that. It captures inputs, assembles context, requests a response from the model, handles the model's outputs, and defines the shape of the loop. Here's the model's loop, inside the harness:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
 │                                                                 │
-│  input ─► context ─► ┌───────── model ─────────┐ ─► output ─┬───┼─► person
+│  input ─► context ─► ┌───────── model ─────────┐ ─► output ─┬───┼─► world
 │    ▲                 │ tokens in ─► next token │            │   │
 │    │                 │      ▲            │     │            │   │
 │    │                 │      └── append ◄─┘     │            │   │
 │    │                 └─────────────────────────┘            │   │
-│    └───────────────────── a tool's result ◄─────────────────┘   │
+│    └─────────────────────── what happened ◄─────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -54,23 +54,25 @@ The harness has five parts:
 
 | Part | What it does |
 |---|---|
-| **Input** | takes in what arrives: your message, or what a command printed |
-| **Context** | puts together what the model is shown |
-| **Model interface** | sends that to the model and gets its reply |
-| **Output** | shows the reply to you, or runs the command it asks for |
-| **Control flow** | determines the shape of the loop: go again, hand back to you, or stop |
+| **Input** | captures what comes in: a message, or the result of an action |
+| **Context** | assembles what the model is shown |
+| **Model interface** | requests a response from the model |
+| **Output** | handles the model's outputs: a reply, or an action in the world |
+| **Control flow** | defines the shape of the loop: go again, hand back, or stop |
 
 Neither primitive is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
 
-Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built, and the best bodies are shaped by the mind inside them: what the model knows, and how it behaves. So let's build one.
+Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built. So let's build one.
 
 ## Building a Harness
 
-We aren't building a model here, so we'll build the harness around a capable one that we call through an API. Any provider that accepts Anthropic's Messages format will work; we use Claude Sonnet.
+Building a harness starts with what you want the agent to do. You pick a model with the knowledge and behaviors that work needs, then build the harness around it, so it can actually do the work. The best bodies are shaped by the mind inside them.
 
-The model has to bring what the harness can't: general knowledge and language, expertise in the work at hand (here, code), and the behaviors the harness relies on, like asking for a tool and stopping when the job is done. A harness can only be as good as the model inside it.
+To know a model, research it. What does it know? How does it behave? From those, what is it likely to be good at?
 
-We'll add one part at a time around that model, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
+We'll use Claude Sonnet, called through an API; any provider that accepts Anthropic's Messages format will work. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer through its shell, so it can do anything a person could do from a command line.
+
+We aren't building the model, only the body around it. We'll add one part at a time, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
 
 **The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version gets the same request:
 
