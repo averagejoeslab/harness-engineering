@@ -18,7 +18,7 @@ Every agent is capable of doing these things because they are composed from two 
 - **The model (the mind)** does the thinking. It turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
 - **The harness (the body)** does the observing and acting, and runs the loop. It captures input, assembles context, requests a response from the model, handles the output, and determines the shape of the loop.
 
-Neither is an agent alone. A model without a harness can only predict: it can't read a file or run a command. A harness without a model has a body, but nothing to think about what to do. Together they close the loop: observe, think, act, then repeat.
+Neither is an agent alone. A model without a harness can only predict: it can't read a file or run a command, effectively it's a brain in a jar. A harness without a model is a body without a head, it has no brain to do the thinking about what to do. Together they close the loop: observe, think, act, then repeat.
 
 I like to sum the idea up as one equation: an agent is a harness wrapped around a model, much like a body is wrapped around a mind.
 
