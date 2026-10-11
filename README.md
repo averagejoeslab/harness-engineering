@@ -52,31 +52,31 @@ Here's the same loop, inside the harness. The harness hands the model what it pe
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-What comes in, from a person or from the world, is **input**. **Context** assembles it into what the model is shown. The model predicts. **Output** shows what it said to a person, or runs it as a tool, and a tool's result comes back in as input. **Control flow** is the loop around all of it: go again, hand back, or stop. And the **model interface** is the connection between the body and the model: the request in and the response out.
+The harness has five parts, its primitives:
 
-Those five are the harness's primitives:
+| Primitive | What it does |
+|---|---|
+| **Input** | takes in what arrives: your message, or what a command printed |
+| **Context** | puts together what the model is shown |
+| **Model interface** | sends that to the model and gets its reply |
+| **Output** | shows the reply to you, or runs the command it asks for |
+| **Control flow** | decides what happens next: go again, hand back to you, or stop |
 
-| Primitive | What it does | For the model |
-|---|---|---|
-| **Input** | captures what comes in: from a person, or from the world | perceiving |
-| **Context** | assembles what the model is shown, and fits it in the space the model has | what it has in mind, and what it remembers |
-| **Model interface** | requests a response from the model | the link between the body and the model |
-| **Output** | handles the response: shows it, or runs it as a tool | acting |
-| **Control flow** | decides what happens next: go again, hand back, or stop | the cycle of perceiving and acting |
-
-The harness has been called a framework, a scaffold, a runtime and an orchestration layer, and the industry has mostly settled on *harness*.
+Every agent you've used, from a coding assistant to a chatbot that books flights, is these five parts. They differ in how each part is built. So let's build one.
 
 ## Building quark
 
-A quark is one of the smallest particles there is. **quark** is an agent built from the five primitives and nothing else. We'll build its body one primitive at a time, outward from the model: reach it, give it input, handle its output, let it go again, then tell it what it is and let it remember. Then we'll make it ready for production.
+A quark is one of the smallest particles there is. **quark** is an agent built from the five parts and nothing else. We'll add one part at a time, and give every version the same job.
 
-Each step is a file, the one before it plus one primitive. You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/) exported as `ANTHROPIC_API_KEY`. Run each step from this folder, like `uv run 1_model_interface.py`.
+**The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version of quark gets the same request:
 
-The runs below are real. They were recorded in the repo quark was first built in, so the files and numbers they mention are from there. In them, the first `$` line is how it was started; after that, `$` is a command quark ran, followed by what it printed.
+> The tests are failing. Find out why and fix it.
 
-### 1. Model interface
+Each step adds one part, runs the job, and shows how far it gets, and what stops it.
 
-We have a model, and no way to reach it. So we request a response, in [`1_model_interface.py`](./1_model_interface.py). The model interface is the arrows into and out of the model:
+### 1. Reach the model
+
+We have a model, and no way to talk to it. So the first part is the **model interface**: send the model a request, get its reply.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -92,8 +92,6 @@ We have a model, and no way to reach it. So we request a response, in [`1_model_
 ```
 
 ```python
-from anthropic import Anthropic
-
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
@@ -102,41 +100,19 @@ def call(each=lambda event: None, **request):            # model interface: the 
         for event in stream: each(event)
         return stream.get_final_message()
 
-output = call(max_tokens=16384, messages=[{"role": "user", "content": "What's in this directory?"}])
+output = call(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
 print(output.model_dump_json(indent=2))
 ```
 
-`call()` is the model interface, all of it: it sends a request to `MODEL` and returns the response. Every later step calls the model through this one function. The response streams back piece by piece as the model writes it, so a long one never sits waiting to time out, and each piece goes to `each()`. Here nothing is done with the pieces yet. `get_final_message()` puts them back together.
+`call()` is the whole model interface. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
 
-What comes back (shortened):
+> **Run:** the model's reply to the job, printed raw. It can't see the project, so it can't help.
 
-```json
-{
-  "content": [
-    {
-      "thinking": "",
-      "type": "thinking"
-    },
-    {
-      "text": "I can't see your directory. I don't have access to your file system in this conversation, and no files or attachments have been shared with me.\n\nYou can list the contents yourself with one of these:\n\n- **macOS/Linux:** `ls` (or `ls -la` to include hidden files and details) ...",
-      "type": "text"
-    }
-  ],
-  "model": "claude-sonnet-5-5",
-  "stop_reason": "end_turn",
-  "usage": {
-    "input_tokens": 15,
-    "output_tokens": 240,
-    ...
-  }
-}
-```
+It answered. But it can't see the project, and the question is written into the code. Nobody can ask it anything else.
 
-Tokens in, tokens out. The model knows the right next step is `ls`. It just can't take it. And the question is written into the code: nobody can ask it anything.
+### 2. Let someone ask
 
-### 2. Input
-
-So we capture what comes in, in [`2_input.py`](./2_input.py):
+So we add **input**: read what you type, or what you put on the command line, and send that instead.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -152,9 +128,6 @@ So we capture what comes in, in [`2_input.py`](./2_input.py):
 ```
 
 ```python
-# ── output: the one tool ────────────────────────────────────────────────────
-tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
-
 # ── input ───────────────────────────────────────────────────────────────────
 def read(prompt):                                        # input: from a person
     while True:
@@ -165,42 +138,24 @@ def read(prompt):                                        # input: from a person
         prompt = "> "
 input = " ".join(sys.argv[1:]) or read("> ")
 if input == "/q": sys.exit()
-```
 
-```python
 output = call(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
 ```
 
-`read()` is input from a person: it prints a prompt and reads a line. Input can also come from the command line. We also describe one tool, `bash`, so the model knows it can ask to run a command. Nothing can run it yet.
+We also describe one tool to the model, `bash`, so it knows it can ask to run a command:
 
-```
-$ uv run 2_input.py "how many lines are in README.md?"
-```
-
-What comes back (shortened):
-
-```json
-{
-  "content": [
-    {
-      "input": {
-        "cmd": "wc -l README.md"
-      },
-      "name": "bash",
-      "type": "tool_use"
-    }
-  ],
-  "stop_reason": "tool_use",
-  ...
-}
+```python
+tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
-The model answered the only way it can: with a `tool_use` block asking to run `wc -l README.md`, and `stop_reason: "tool_use"`, waiting for the result. The model asked; nothing acted.
+> **Run:** the reply to the job: a request to run a command, such as looking at the files. Nothing runs it.
 
-### 3. Output
+Now it asks to look. But nothing carries out what it asks.
 
-So we handle the response: show its words as they're written, and run its commands. That's [`3_output.py`](./3_output.py):
+### 3. Let it act
+
+So we add **output**: show its words as they arrive, and run the commands it asks for.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -222,8 +177,6 @@ def show(event):                                         # output: text, shown a
 ```
 
 ```python
-output = call(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
-
 input = []
 for block in output:                                     # output: run tool requests
     if block.type == "tool_use":
@@ -233,19 +186,15 @@ for block in output:                                     # output: run tool requ
         input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
 ```
 
-`show()` gets each piece as it streams in, so words appear as they're written. Each `tool_use` block is run, and what it printed becomes a `tool_result`, input again, this time from the world.
+What a command prints comes back as input, this time from the world, not from you.
 
-```
-$ uv run 3_output.py "how many lines are in README.md?"
-$ wc -l README.md
-301 README.md
-```
+> **Run:** quark runs its first command and prints what it found, then stops.
 
-It acted. But the model never sees the 301. It's sitting in `input`, and nothing sends it.
+It acted. But what the command printed never reaches the model, so it can't take the next step.
 
-### 4. Control flow
+### 4. Let it keep going
 
-So we decide what happens next. If a tool ran, its result goes back and the model goes again. If not, it's your turn. That's [`4_control_flow.py`](./4_control_flow.py):
+So we add **control flow**: when a command ran, send what it printed back to the model and go again. When the model asks for nothing more, hand back to you.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -261,8 +210,6 @@ So we decide what happens next. If a tool ran, its result goes back and the mode
 ```
 
 ```python
-chat = len(sys.argv) < 2
-
 # ── control flow ────────────────────────────────────────────────────────────
 messages = [{"role": "user", "content": input}]
 
@@ -286,27 +233,19 @@ while True:
     messages.append({"role": "user", "content": input})
 ```
 
-The inner path goes until the model stops asking for tools: that's how it ends, with no step count and no magic word. With input on the command line, it runs until then and exits. With none, it's a chat: it hands back to you with `> `, and `/q` (or Ctrl-D) quits.
+> **Run:** quark looks at the files, runs the tests, finds the discount is taken off as an amount instead of a percentage, fixes it, and runs the tests again. They pass.
 
-```
-$ uv run 4_control_flow.py "which quark.py in the lessons folder is the longest? answer in one sentence"
-$ find . -path "*lessons*" -name "quark.py" -exec wc -l {} + | sort -n | tail -5
-   12 ./lessons/01-model-interface/quark.py
-   38 ./lessons/02-input-and-output/quark.py
-   51 ./lessons/03-control-flow/quark.py
-  239 ./lessons/04-context/quark.py
-  340 total
+The job is done. **This is an agent:** it keeps going until the job is finished, then hands back to you.
 
-The longest one is `./lessons/04-context/quark.py`, at 239 lines.
-```
+But it doesn't know what it is or where it's working, and when it stops, it forgets everything:
 
-That's two calls. The first asked for a command, its result went back, and the second answered from what it found. That's an agent.
+> **Run:** ask step 4 "Who are you, and where are you working?" It has to run commands to find out, and still can't say who it is.
 
-But it knows nothing. Not where it is, what day it is or who it is, and nothing you told it yesterday. And `messages` grows every pass; a long session will outgrow what the model can read.
+The last part, **context**, fixes that. It's the biggest part, so we'll build it in three steps, all in [`quark.py`](./quark.py).
 
-### 5. Context
+### 5. Tell it what it is
 
-So before every call, we assemble what the model sees, and fit it in the space it has. That's [`quark.py`](./quark.py), the whole agent:
+Every request now starts with instructions: who it is, what it can do, where it's working and what day it is. quark is also shown its own code, so it knows how it works.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -321,48 +260,15 @@ So before every call, we assemble what the model sees, and fit it in the space i
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Context is where most of an agent lives. quark's has eight components.
-
-**Working memory.** The `messages` list, renamed `working_memory`, because that's what it is: this session, sent in full every call.
-
-**Episodic memory.** The harness writes every message twice: into working memory, and as one line of `.quark/episodes/<start time>.jsonl`, one file per session. The model's output is written before any tool runs, so a session that dies mid-command still shows what was asked.
-
-```python
-EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"
-
-def remember(message):                                   # episodic memory: the harness writes every message, as it was
-    os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
-    with open(EPISODE, "a") as f: f.write(json.dumps(message, default=lambda b: b.model_dump(exclude_none=True)) + "\n")
-
-def add(working_memory, message):                        # one message, two places: in context and on disk
-    working_memory.append(message); remember(message)
-```
-
-**Semantic memory.** Facts that last, one per line in `.quark/memory/memory.md`: `- <subject>: <fact>`. There's no code for it: the instructions give the exact commands to write a fact and replace one, and quark runs them with bash.
-
-**Procedural memory.** Skills: one Markdown file per method that worked, in `.quark/skills/`, with a `name` and a `description` at the top. quark writes them, generalized: the method behind the task, not a replay of it. The harness indexes them, so quark sees what it knows how to do and reads a skill only when a task needs it:
-
-```python
-def skills():                                            # procedural memory: an index built from each skill's front matter
-    index = []
-    for path in sorted(glob.glob(".quark/skills/*.md")):
-        text = open(path).read()
-        name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
-        index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
-    return "\n".join(index) or "- (none yet)"
-```
-
-**Self-knowledge.** quark is shown its own code, with the instructions left out, since it's reading them:
-
 ```python
 def mechanics():                                         # self-knowledge: this file, with the system prompt redacted
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # redacted: it is the prompt you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 ```
 
-**Instructions.** The system prompt, rebuilt every call so the folder, the date and the skill index are current. It's written as models of what quark needs to know: a Self Model, Memory, a World Model, an Other Selves Model, Body Operations and Mechanics. Each memory gets the same parts: where it's stored, the format, the exact command to write it, what's worth writing, how to read it back, and its rules.
+The instructions are long, because they also explain its memory, which comes next. Here they are in full:
 
 <details>
-<summary>quark's instructions, in full</summary>
+<summary>quark's instructions</summary>
 
 ````python
 def system():                                            # instructions
@@ -518,9 +424,60 @@ This code is your harness — shown so you know your self mechanics. The system 
 
 </details>
 
-**Recall across memories.** The instructions order the memories from most distilled to most complete: facts, then skills, then past sessions, stopping as soon as it has what it needs.
+> **Run:** "Who are you, and where are you working?" It answers straight away, with no commands.
 
-**Compaction.** When working memory grows past what the model can read, the API refuses with "prompt is too long". quark catches that, drops the oldest turns, and replaces the rest with a summary that says where the originals are. It's lazy: no call is spent on a summary nobody needed.
+### 6. Let it remember
+
+A conversation ends, and everything in it is gone. So we give quark three places to keep things, as plain files in its folder:
+
+| What it keeps | Where | Who writes it |
+|---|---|---|
+| **A diary**: every message of every session | `.quark/episodes/` | the harness, as it happens |
+| **Facts**: what's true, one per line | `.quark/memory/memory.md` | quark |
+| **How-tos**: steps that worked, one per file | `.quark/skills/` | quark |
+
+(These are what psychologists call episodic, semantic and procedural memory.)
+
+The harness writes the diary, every message, as it happens:
+
+```python
+EPISODE = f".quark/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"
+
+def remember(message):                                   # episodic memory: the harness writes every message, as it was
+    os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
+    with open(EPISODE, "a") as f: f.write(json.dumps(message, default=lambda b: b.model_dump(exclude_none=True)) + "\n")
+
+def add(working_memory, message):                        # one message, two places: in context and on disk
+    working_memory.append(message); remember(message)
+```
+
+quark writes facts and how-tos itself, with ordinary commands. The instructions say how. The harness lists the how-tos at the top of every request, so quark knows what it already knows how to do:
+
+```python
+def skills():                                            # procedural memory: an index built from each skill's front matter
+    index = []
+    for path in sorted(glob.glob(".quark/skills/*.md")):
+        text = open(path).read()
+        name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
+        index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
+    return "\n".join(index) or "- (none yet)"
+```
+
+Tell it something once:
+
+> **Run:** "From now on, write commit messages in lowercase, starting with 'fix:'. Remember that." quark writes it to its facts.
+
+Then, in a new session, give it the job and ask it to commit:
+
+> **Run:** it checks its facts first, fixes the bug, and commits it as "fix: …".
+
+And ask about the past:
+
+> **Run:** "What have we done in this folder before?" It reads its diary and lists the earlier sessions.
+
+### 7. Keep it from overflowing
+
+The conversation is sent in full with every request, and it keeps growing. A long session will outgrow what the model can read. When it does, the model refuses the request. quark then sums up the older part and carries on. Nothing is lost: the diary still has every message, and the summary says where to find them.
 
 ```python
 def compact(working_memory, drop):                       # lazy: runs only after the API says the prompt is too long
@@ -532,14 +489,7 @@ def compact(working_memory, drop):                       # lazy: runs only after
     return [{"role": "user", "content": f"[your earlier working memory, summarized; every original message is in {EPISODE}] {gist}"}]
 ```
 
-| Memory | Who writes it | Where | How the model sees it |
-|---|---|---|---|
-| Working | the harness, `add()` | `working_memory` | every call, as the messages |
-| Episodic | the harness, `add()` | `.quark/episodes/<start>.jsonl` | by searching, when the past matters |
-| Semantic | quark, with bash | `.quark/memory/memory.md` | by reading, when facts matter |
-| Procedural | quark, with bash; indexed by `skills()` | `.quark/skills/<name>.md` | the index every call; a skill when it applies |
-
-The loop sends it all: `system=system()` on every call, wrapped so "prompt is too long" sets off compaction on the next pass:
+The loop sends it all, and calls `compact()` when the model refuses:
 
 ```python
 working_memory, drop = [], 0
@@ -556,135 +506,28 @@ while True:
         continue
 ```
 
-Ask it what it is:
+That's all five parts. [`quark.py`](./quark.py) is a complete agent: it does the job, knows what it is, remembers what you told it and what happened, and keeps going however long the session runs.
 
-```
-$ uv run quark.py "what are you, and how do you work? three sentences"
-I'm quark, an AI agent that works through a single tool, bash. That tool lets me observe and act on the whole system from the command line. I run a loop of observe, think, act, and repeat, and my context window is my working memory. Three stores outside it persist across sessions: semantic memory (facts), procedural memory (skills), and episodic memory (a log of every session). I read from them and write to the first two. The harness writes the third automatically.
-```
+## Would you leave it alone?
 
-Tell it something:
+quark works. But it runs any command it likes on your machine, without asking. If it stops halfway, the task is lost. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
 
-```
-$ uv run quark.py "remember that I prefer short answers"
-$ mkdir -p .quark/memory && [ ! -f .quark/memory/memory.md ] && echo "# Quark Memory" > .quark/memory/memory.md; grep -i "short" .quark/memory/memory.md; cat >> .quark/memory/memory.md << 'EOF'
-- user: prefers short answers
-EOF
+Getting it ready to leave alone means asking six questions, of every part:
 
-Noted: you prefer short answers.
-```
-
-A new session starts with empty working memory, and still knows:
-
-```
-$ uv run quark.py "what do you know about me?"
-$ cat .quark/memory/memory.md 2>/dev/null; ls .quark/skills .quark/episodes 2>/dev/null | head -20
-# Quark Memory
-- user: prefers short answers
-...
-
-Not much. Here is what I know about you:
-
-- You prefer short answers. This is saved in my memory.
-- You've asked me how I work, and you asked me to remember your preference.
-...
-```
-
-(shortened)
-
-Give it something that will come up again:
-
-```
-$ uv run quark.py "I'll often ask you how many lines of Python are in a repo, not counting .venv. Do it for this one now."
-$ cd /home/user/building-agents && find . -name '*.py' -not -path './.venv/*' -not -path '*/.venv/*' -print0 | xargs -0 cat | wc -l; find . -name '*.py' -not -path '*/.venv/*' | wc -l
-3335
-25
-
-$ mkdir -p .quark/skills && cat > .quark/skills/count-python-lines.md << 'EOF'
----
-name: count-python-lines
-description: count lines of Python in a repo, excluding .venv (how many lines of python / .py LOC)
----
-1. cd to the repo root (default: the working directory).
-2. Run: find . -name '*.py' -not -path '*/.venv/*' -print0 | xargs -0 cat | wc -l
-3. Optionally count files: same find piped to wc -l (use -print instead of -print0).
-4. Report total lines and file count.
-EOF
-cat >> .quark/memory/memory.md << 'EOF'
-- user: often asks how many lines of Python are in a repo, excluding .venv (see skill count-python-lines)
-EOF
-
-This repo has **3,335 lines of Python** across 25 `.py` files, not counting `.venv`.
-
-I saved the method as a skill, so next time I can reuse it.
-```
-
-It wrote two memories: a skill, named for the whole kind of task, and a fact about you that points to it. In a new session, the skill is in its index, so it reads it first and follows it:
-
-```
-$ uv run quark.py "how many lines of Python are in this repo?"
-$ cat .quark/skills/count-python-lines.md 2>/dev/null
-...
-$ find . -name '*.py' -not -path '*/.venv/*' -print0 | xargs -0 cat | wc -l; find . -name '*.py' -not -path '*/.venv/*' | wc -l
-3335
-25
-
-The repo has **3,335 lines of Python** across **25 `.py` files**. I left out anything under `.venv`.
-```
-
-(shortened)
-
-And a question only episodic memory can answer:
-
-```
-$ uv run quark.py "what have I asked you in earlier sessions?"
-$ ls .quark/episodes/ 2>/dev/null | wc -l; grep -m1 -H "" .quark/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-06T20-31-17 | cut -c1-250
-6
-.quark/episodes/2026-10-06T20-30-37.jsonl:{"role": "user", "content": "what are you, and how do you work? three sentences"}
-...
-
-In earlier sessions you asked me:
-
-1. "what are you, and how do you work? three sentences"
-2. "remember that I prefer short answers"
-3. "what do you know about me?"
-4. "I'll often ask you how many lines of Python are in a repo, not counting .venv. Do it for this one now."
-5. "how many lines of Python are in this repo?"
-```
-
-(shortened)
-
-That's all five primitives: an agent that works, remembers facts, learns skills, recalls what happened, and knows what it is. 242 lines, most of them its instructions.
-
-## Run it
-
-```bash
-export ANTHROPIC_API_KEY=your-key
-uv run quark.py                       # chat; /q or Ctrl-D quits
-uv run quark.py "do one thing"        # one request, then it exits
-```
-
-> [!WARNING]
-> quark runs the model's shell commands without asking. Run it somewhere you can afford to lose.
-
-## From quark to production
-
-quark works, but you wouldn't leave it running on its own. Six concerns stand in the way. Each asks one question of every primitive:
-
-| Concern | The question |
+| Question | Concern |
 |---|---|
-| Persistence | what should outlast the session? |
-| Safety | what could do harm? |
-| Observability | what should we see? |
-| Resilience | what could fail? |
-| Performance | what's slow or costly? |
-| Evaluation | what could a change break? |
+| What if it stops halfway? | Persistence |
+| What if it does harm? | Safety |
+| What did it actually do? | Observability |
+| What if something breaks? | Resilience |
+| Why is it slow or costly? | Performance |
+| How do we know it still works? | Evaluation |
 
-Each concern adds a few lines to `quark.py`, marked with the concern it answers. The result is [`quark_production.py`](./quark_production.py). It runs commands in [Docker](https://docs.docker.com/get-docker/), so you'll need that running.
+Each answer is a few lines added to `quark.py`, marked with the question it answers. The result is [`quark_production.py`](./quark_production.py).
 
-### Persistence
+### What if it stops halfway?
 
-quark already keeps most of what should outlast a session: its memories. What it loses is the task in progress. **Control flow** picks up a session that ended mid-task from its episode, and tells quark that a command left running may or may not have run:
+Its memory already lasts. The task in progress doesn't. When quark starts, **control flow** checks the diary for a session that didn't finish, and offers to carry on. A command that was running when it stopped may or may not have finished, so quark is told to check:
 
 ```python
 def resume():                                            # persistence: carry on a session that ended mid-task
@@ -702,16 +545,11 @@ def resume():                                            # persistence: carry on
     return working_memory
 ```
 
-**Input** asks for it first, before anything new:
+> **Run:** quark is stopped in the middle of the job, then started again. It offers to continue, checks what happened, and finishes.
 
-```python
-working_memory = resume()                                # persistence: an unfinished session comes back first
-input = "" if working_memory else " ".join(sys.argv[1:]) or read("> ")
-```
+### What if it does harm?
 
-### Safety
-
-Every command runs on your machine, unasked. **Output** runs commands in a box, a container that sees this folder and nothing else, with no network:
+Every command runs on your machine, unasked. Now **output** runs them in a box: a container that sees only this folder, with no internet.
 
 ```python
 def start_box():                                         # safety: a container that sees this folder and nothing else
@@ -721,7 +559,7 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 ```
 
-**Control flow** runs nothing without a yes, and **input** asks for it:
+And nothing runs without your yes:
 
 ```python
 def yes(question):                                       # input: a yes or no from a person; anything else is no
@@ -729,13 +567,11 @@ def yes(question):                                       # input: a yes or no fr
     return sys.stdin.readline().strip().lower() == "y"
 ```
 
-**Context** tells quark about both, so it doesn't try what it can't do: its Body is now a container with no network, where each command waits for the person's yes.
+> **Run:** "Delete test_prices.py, it keeps failing." You say yes to looking, and no to deleting. quark tells you it didn't delete it.
 
-*Persistence still holds:* the box sees this folder, and `.quark/` is in it, so quark can still read and write its memory, and every write is a command you approve.
+### What did it actually do?
 
-### Observability
-
-After a run, all you have is what scrolled past. So each request and each command writes one line to a record, kept outside the folder, where quark can't change it:
+Once the screen scrolls past, it's gone. So every request and every command adds one line to a record, kept outside quark's folder, where it can't change it:
 
 ```python
 RECORD = os.path.expanduser("~/.quark/record.jsonl")     # observability: outside the folder, where quark can't change it
@@ -744,19 +580,17 @@ def record(**step):                                      # observability: one li
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
-**Model interface** records the tokens each request used. **Output** records each command and how it ended, or that you said no.
+> **Run:** the record of the job: how much each request cost, and each command and how it ended.
 
-*Persistence is different:* episodes are what quark remembers. The record is what you see.
+### What if something breaks?
 
-### Resilience
-
-A request can fail, and a command can hang forever. **Model interface** retries a failed request three times:
+A request to the model can fail, and a command can hang forever. Now a failed request is tried again, up to three times:
 
 ```python
 client = Anthropic(max_retries=3)                        # resilience: retry a request that fails
 ```
 
-**Output** stops a command after a minute, and says so. With safety's box and yes, it's:
+And a command is stopped after a minute:
 
 ```python
             cmd = block.input["cmd"]
@@ -774,41 +608,63 @@ client = Anthropic(max_retries=3)                        # resilience: retry a r
             input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
-And if quark itself crashes, persistence already has the session on disk: the next start offers to continue it. Compaction, from context, already handles a conversation too long to send.
+> **Run:** "Run sleep 100, then tell me it finished." The command is stopped after a minute, and quark says so.
 
-### Performance
+### Why is it slow or costly?
 
-Every request sends everything again, at full price. quark's instructions are already cached. **Model interface** asks for the conversation to be cached too, so each request pays full price only for what's new:
+Every request sends the whole conversation again. Now the model is asked to remember what it's already seen, so each request pays full price only for what's new:
 
 ```python
         response = call(show, max_tokens=16384, system=system(), tools=tools, messages=working_memory,
                         cache_control={"type": "ephemeral"})   # performance: the conversation is cached too, not just the prompt
 ```
 
-Cached tokens cost about a tenth. The record's `cached` field shows how much each request reused.
+> **Run:** the record of the job again: from the second request on, most of each request is reused, not paid for in full.
 
-*Persistence costs a little here:* the skill index is in the instructions, so when quark saves a new skill, the next request pays full price once.
+### How do we know it still works?
 
-### Evaluation
-
-Any change can change what quark does: a word in the instructions, a new model, a new tool. So run it on a task with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) gives it a bug to fix in a fresh copy of [`shop/`](./shop/), where `total()` takes the discount off as an amount instead of a percentage:
+Any change can change what quark does: a word in its instructions, a new model, a new tool. So we give it a job with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) runs the job on a fresh copy of `shop/`, then checks that the tests pass and that quark didn't touch the test:
 
 ```sh
 #!/bin/sh
 # Evaluation: give quark a task with a known right answer, then check the files, not what it says.
 here=$(pwd)
 cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
-yes | uv run -q "$here/quark_production.py" "The tests are failing. Find out why and fix it." > /dev/null
+yes | uv run -q $([ -f "$here/.env" ] && echo --env-file "$here/.env") "$here/quark_production.py" "The tests are failing. Find out why and fix it." > /dev/null
 python3 -m unittest -q 2>/dev/null && git diff --quiet HEAD -- test_prices.py && echo "PASS: the tests pass, and the test file is unchanged" || echo "FAIL"
 ```
 
-**Input** already takes a request from the command line, and **control flow** already runs it once and stops. `yes` answers every approval, so the box is what keeps it safe. *Persistence:* a request from the command line never offers to continue an old session, and each run is a fresh folder, so no memory carries over between runs.
+> **Run:** ./eval.sh prints PASS.
 
 Run it after every change.
 
+## What you built
+
+You started with a model that could only predict the next token, and built a body around it, one part at a time:
+
+| Part | What it gave quark |
+|---|---|
+| Model interface | a way to reach the model |
+| Input | a way to be asked |
+| Output | a way to act |
+| Control flow | a way to keep going until the job is done |
+| Context | knowing what it is, remembering, and room to keep working |
+
+Then you made it ready to leave alone by asking six questions of every part.
+
+That's harness engineering. Every agent, from quark to the coding assistants you use every day, is a model inside these five parts, built more carefully. Open any one of them and you'll find the same five.
+
+## Try it yourself
+
+You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `quark_production.py` and `eval.sh` also need [Docker](https://docs.docker.com/get-docker/).
+
 ```bash
-uv run quark_production.py    # quark, with the six concerns
-./eval.sh                     # check it still works
+echo "ANTHROPIC_API_KEY=your-key" > .env
+uv run --env-file .env 1_model_interface.py     # or any step: 2_input.py, 3_output.py, 4_control_flow.py
+uv run --env-file .env quark.py                 # the whole agent: chat, /q to quit
+uv run --env-file .env quark_production.py      # ready to leave alone
+./eval.sh                                       # check it still works
 ```
 
-Claude Code, Cursor and every other agent are these same five primitives, hardened in these ways.
+> [!WARNING]
+> `quark.py` runs the model's commands on your machine without asking. Run it somewhere you can afford to lose.
