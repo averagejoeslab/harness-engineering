@@ -66,7 +66,7 @@ Every agent you've used, from a coding assistant to a chatbot that books flights
 
 ## Building a Harness
 
-Building a harness starts with what you want the agent to do. You pick a model with the knowledge and behaviors that work needs, then build the harness around it, so it can actually do the work. The best bodies are shaped by the mind inside them.
+Building a harness starts with what you want the agent to do. The best bodies are shaped by the mind inside them. You pick a model with the knowledge and behaviors that work needs, then build the harness around it, so it can actually do the work.
 
 To know a model, research it. What does it know? How does it behave? From those, what is it likely to be good at?
 
