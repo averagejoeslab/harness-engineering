@@ -52,19 +52,19 @@ Given an input, it produces an output, and that's all. It can't capture its own 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The harness can be reduced into five primtives:
+The harness itself can be reduced to five primitives:
 
-| Primtive | What it does |
+| Primitive | What it does |
 |---|---|
-| **Input** | captures what comes in: (e.g. user prompt, tool result) |
-| **Context** | assembles what the model is shown: (e.g. system prompt, user prompt)  |
+| **Input** | captures what comes in (e.g. a message, the result of an action) |
+| **Context** | assembles what the model is shown (e.g. instructions, the message) |
 | **Model interface** | requests a response from the model |
-| **Output** | handles the model's outputs: (e.g. assistant response, tool call |
+| **Output** | handles the model's outputs (e.g. a reply, an action) |
 | **Control flow** | defines the shape of the loop: go again, hand back, or stop |
 
-Neither primitive is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
+Neither the model nor the harness is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
 
-Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five parts. They differ in how each part is built. So let's build one.
+Every agent you've used, from a coding assistant to a chatbot that books flights, is a model inside these five primitives. They differ in how each primitive is built. So let's build a harness.
 
 ## Building a Harness
 
@@ -74,7 +74,7 @@ To know a model, research it. What does it know? How does it behave? From those,
 
 We'll use Claude Sonnet, called through an API; any provider that accepts Anthropic's Messages format will work. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer through its shell, so it can do anything a person could do from a command line.
 
-We aren't building the model, only the body around it. We'll add one part at a time, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
+We aren't building the model, only the body around it. We'll add one primitive at a time, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
 
 **The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version gets the same request:
 
@@ -82,7 +82,7 @@ We aren't building the model, only the body around it. We'll add one part at a t
 
 ### 1. Reach the model
 
-We have a model, and no way to talk to it. So the first part is the **model interface**: send the model a request, get its reply.
+We have a model, and no way to talk to it. So the first primitive is the **model interface**: send the model a request, get its reply.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -327,7 +327,7 @@ I'm working in this environment:
 
 (shortened)
 
-The last part, **context**, fixes that.
+The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
@@ -454,13 +454,13 @@ while True:
 
 > **Run, to be recorded:** asked who it is and where it's working, it names its shell and its system, without running a command.
 
-That's all five parts. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is and how to use its body, and keeps going however long the session runs.
+That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is and how to use its body, and keeps going however long the session runs.
 
 ## Would you leave it alone?
 
 The agent works. But when a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
 
-Getting it ready to leave alone means asking six questions, of every part:
+Getting it ready to leave alone means asking six questions, of every primitive:
 
 | Question | Concern |
 |---|---|
@@ -837,9 +837,9 @@ Run it after every change.
 
 ## What you built
 
-You started with a model that could only predict the next token, and built a body around it, one part at a time:
+You started with a model that could only predict the next token, and built a body around it, one primitive at a time:
 
-| Part | What it gave the agent |
+| Primitive | What it gave the agent |
 |---|---|
 | Model interface | a way to reach the model |
 | Input | a way to be asked |
@@ -847,9 +847,9 @@ You started with a model that could only predict the next token, and built a bod
 | Control flow | a way to keep going until the job is done |
 | Context | knowing what it is and how to use its body, and room to keep working |
 
-Then you made it ready to leave alone by asking six questions of every part, starting with what should outlast a session: its memory.
+Then you made it ready to leave alone by asking six questions of every primitive, starting with what should outlast a session: its memory.
 
-That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five parts, built more carefully. Open any one of them and you'll find the same five.
+That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built more carefully. Open any one of them and you'll find the same five.
 
 ## Try it yourself
 
