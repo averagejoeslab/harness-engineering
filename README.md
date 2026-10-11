@@ -22,7 +22,7 @@ Neither is an agent alone. A model without a harness can only think: it can't ob
 
 I like to sum an agent up with this expression: **Agent = Harness(Model)**
 
-Harness engineering is building that body. A body is shaped by the mind inside it, so we start with the model: what it does, and what it can't.
+Harness engineering is practice of building the body of the agent and body is limited by the capabilities of the mind inside it, so we start with the model: what it does, and what it can't.
 
 ## The model
 
