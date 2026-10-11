@@ -29,6 +29,8 @@ TokensIn ─► Model ─► most probable next token ─┤
                                      is it <eos>? ── yes ─► TokensOut
 ```
 
+So everything a model does fits in one function: it takes tokens in and gives tokens out.
+
 **TokensOut = Model(TokensIn)**
 
 That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Every token it reads has to be handed to it, and every token it writes has to be turned into something that happens. That's the harness's job.
