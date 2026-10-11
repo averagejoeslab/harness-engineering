@@ -20,7 +20,7 @@ Every agent is capable of doing these things because they are composed from two 
 
 Neither is an agent alone. A model without a harness can only think: it can't observe or act, effectively it's a brain in a jar. A harness without a model only defines how to observe and act, effectively its a body without a head. Together they close the loop: observe, think, act, then repeat.
 
-Harness engineering is the practice of building the body for the agent and the most effective bodies are shaped according to the capabilities of the mind inside, so we start with the model: we think about what it knows and how it behaves so we can use that to ground the shape of our harness.
+Harness engineering is the practice of building the body for the agent and the most effective bodies are shaped according to the capabilities of the mind inside, so we start with the model: we ask ourselves what does the model know and how does it behave,so that we can use that to ground the shape of our harness.
 
 ## The model
 
