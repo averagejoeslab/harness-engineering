@@ -18,7 +18,7 @@ An agent does this with two primitives:
 - **The model (the mind)** does the thinking. It turns its input into tokens, then predicts the next token, one at a time, until it predicts an end token like `<eos>`.
 - **The harness (the body)** does the observing and acting, and runs the loop. It captures input, assembles context, requests a response from the model, handles the output, and decides what happens next.
 
-Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to think about what to do. Together they close the loop: observe, think, act, then observe what happened.
+Neither is an agent alone. A model without a harness can only predict: it can't read a file or run a command. A harness without a model has a body, but nothing to think about what to do. Together they close the loop: observe, think, act, then repeat..
 
 I like to sum the idea up as one equation: an agent is a harness wrapped around a model, much like a body is wrapped around a mind.
 
@@ -42,7 +42,7 @@ So everything a model does fits in one function: it takes tokens in and gives to
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Everything it reads has to be handed to it, and everything it writes has to be turned into something that happens. That's the harness's job.
+That's all it does. It can write the tokens for a command, but it can't run one. It can describe a file, but it can't read one. Everything it reads has to be handed to it, and everything it writes has to be turned into actions. That's the harness's job.
 
 ## The harness
 
