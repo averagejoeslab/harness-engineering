@@ -33,9 +33,9 @@ So everything a model does fits in one function: tokens in, tokens out.
 
 **TokensOut = Model(TokensIn)**
 
-Given an input, it produces an output, and that's all. It can't capture its own inputs, choose what it's shown, act on its outputs, or decide what happens next.
+Given an input, it produces an output, and that's all. It can't capture its own inputs, choose what it's shown, act on its outputs, or define the loop.
 
-**The harness (the body)** does all of that. It does the observing, the assembling of onservations, acting, and runs the loop. Here's the model's loop, inside the harness:
+**The harness (the body)** does all of that. It captures the inputs, chooses what to show, acts on the outputs, and defines the loop. Here's the model's loop, inside the harness:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
