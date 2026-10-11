@@ -19,13 +19,13 @@ Harness engineering is building that body. A body is shaped by the mind inside i
 
 ## The model
 
-Up close, the model is a loop. Tokens go in, it returns the most probable next token, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token.
+Up close, the model is a loop. Tokens go in, it predicts the next token by choosing from the ones most likely to come next, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token.
 
 ```
             ┌──────────── append ◄────────────┐
             ▼                                 │
-TokensIn ─► Model ─► most probable next token ─┤
-                                               │
+TokensIn ─► Model ─► predicted next token ────┤
+                                              │
                                      is it <eos>? ── yes ─► TokensOut
 ```
 
