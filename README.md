@@ -20,9 +20,7 @@ Every agent is capable of doing these things because they are composed from two 
 
 Neither is an agent alone. A model without a harness can only think: it can't observe or act, effectively it's a brain in a jar. A harness without a model only defines how to observe and act, effectively its a body without a head. Together they close the loop: observe, think, act, then repeat.
 
-I like to sum the idea up as one equation: an agent is a harness wrapped around a model, much like a body is wrapped around a mind.
-
-**Agent = Harness(Model)**
+I like to sum an agent up with this expression: **Agent = Harness(Model)**
 
 Harness engineering is building that body. A body is shaped by the mind inside it, so we start with the model: what it does, and what it can't.
 
