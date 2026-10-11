@@ -2,9 +2,20 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-To understand harness engineering, you first have to understand what an agent is. An agent is a system that perceives its environment, decides what to do, and acts on it, again and again, to reach a goal. An agent has two primitives: **a model** and **a harness**.
+An agent is a system that perceives its environment, decides what to do, and acts on it, in a loop, until its goal is met.
+
+It has two primitives:
+
+- **The model decides.** Tokens go in, and it predicts the next one. That's all it can do.
+- **The harness perceives and acts.** It's the body around the model: it turns the world into tokens the model can read, and turns the tokens the model writes into actions.
+
+Neither is an agent alone. A model without a harness can only predict text: it can't read a file or run a command. A harness without a model has a body, but nothing to decide what it should do. Together they close the loop: perceive, decide, act, then perceive what happened.
+
+I like to sum the idea up as one equation: an agent is a harness wrapped around a model, much like a body is wrapped around a mind.
 
 **Agent = Harness(Model)**
+
+Harness engineering is building that body.
 
 ## The model
 
@@ -20,13 +31,11 @@ TokensIn ─► Model ─► most probable next token ─┤
 
 **TokensOut = Model(TokensIn)**
 
-That's all it does. It can't read a file, run a command or remember yesterday. On its own, it only predicts what comes next.
+That's all it does.
 
 ## The harness
 
-The harness is everything else. It's the body built around the model, through which the model perceives the world and acts on it.
-
-Here's the whole agent. The model, with its loop of predicting the next token, sits inside the harness:
+Here's the whole agent: the model, with its loop of predicting the next token, inside the harness:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -53,7 +62,7 @@ Those five are the harness's primitives:
 | **Output** | handles the response: shows it, or runs it as a tool | acting |
 | **Control flow** | decides what happens next: go again, hand back, or stop | the cycle of perceiving and acting |
 
-The model predicts; the harness gives that prediction a way to perceive and act. That's harness engineering: building the body around the model. It's been called a framework, a scaffold, a runtime and an orchestration layer, and the industry has mostly settled on *harness*.
+The harness has been called a framework, a scaffold, a runtime and an orchestration layer, and the industry has mostly settled on *harness*.
 
 ## Building quark
 
