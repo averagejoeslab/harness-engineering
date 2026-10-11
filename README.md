@@ -52,14 +52,14 @@ Given an input, it produces an output, and that's all. It can't capture its own 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The harness has five parts:
+The harness can be reduced into five primtives:
 
-| Part | What it does |
+| Primtive | What it does |
 |---|---|
-| **Input** | captures what comes in: a message, or the result of an action |
-| **Context** | assembles what the model is shown |
+| **Input** | captures what comes in: (e.g. user prompt, tool result) |
+| **Context** | assembles what the model is shown: (e.g. system prompt, user prompt)  |
 | **Model interface** | requests a response from the model |
-| **Output** | handles the model's outputs: a reply, or an action in the world |
+| **Output** | handles the model's outputs: (e.g. assistant response, tool call |
 | **Control flow** | defines the shape of the loop: go again, hand back, or stop |
 
 Neither primitive is an agent alone. A model without a harness can only think: it can't observe or act. It's a brain in a jar. A harness without a model can observe and act, but nothing decides what to do. It's a body without a head. Together they close the loop: observe, think, act, then repeat.
