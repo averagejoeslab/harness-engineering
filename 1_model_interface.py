@@ -11,5 +11,5 @@ def call(each=lambda event: None, **request):            # model interface: the 
         for event in stream: each(event)
         return stream.get_final_message()
 
-output = call(max_tokens=16384, messages=[{"role": "user", "content": "What's in this directory?"}])
+output = call(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
 print(output.model_dump_json(indent=2))
