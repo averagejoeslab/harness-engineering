@@ -7,7 +7,7 @@ To understand harness engineering, you first have to understand what an agent is
 An agent is a system that can:
 
 - observe what's around it
-- think about what it observed
+- think about what it observed and decide what to do
 - act on what it decided
 - repeat until its goal is met
 
