@@ -170,15 +170,9 @@ In [`2_input.py`](./2_input.py), `capture_input()` is added:
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input(prompt="> "):                          # input: captures what a person types
-    while True:
-        print(prompt, end="", flush=True)
-        line = sys.stdin.readline()
-        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
-        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
-        prompt = "> "
+def capture_input():                                     # input: captures what a person types
+    return input("> ")
 input = capture_input()                                  # input: what a person types while it runs
-if input == "/q": sys.exit()
 
 output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
@@ -266,7 +260,7 @@ It ran a command, but what the command printed goes nowhere. That's new input, f
 
 ### 4. Let it keep going
 
-So we add **control flow**:
+Next in the flow is **control flow**, which defines the shape of the loop. `control_flow()` sends back what the commands printed, and goes again until the model is done. Then it hands back to you for your next message. Because it now asks more than once, `capture_input()` also gives you a way out: `/q`, or Ctrl-D, stops it.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -281,9 +275,18 @@ So we add **control flow**:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`4_control_flow.py`](./4_control_flow.py):
+In [`4_control_flow.py`](./4_control_flow.py), `capture_input()` learns to stop, and `control_flow()` is added:
 
 ```python
+# ── input ───────────────────────────────────────────────────────────────────
+def capture_input(prompt="> "):                          # input: captures what a person types
+    while True:
+        print(prompt, end="", flush=True)
+        line = sys.stdin.readline()
+        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
+        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
+        prompt = "> "
+
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
@@ -304,9 +307,7 @@ def control_flow():                                      # control flow: defines
 control_flow()
 ```
 
-`control_flow()` defines the shape of the loop. While commands run, it sends back what they printed and goes again. When the model is done, it hands back to you, and `/q` stops it. It also takes a request from the command line, and then it runs once and stops.
-
-This time we pass the task on the command line:
+A request can also come from the command line. Then it runs once and stops, so a script can run it with no one there. This time we pass the task that way:
 
 ```bash
 uv run ../4_control_flow.py "The tests are failing. Find out why and fix it."
