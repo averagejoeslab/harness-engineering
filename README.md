@@ -514,7 +514,7 @@ In [`harness.py`](./harness.py), context is assembled like this:
 - **Assistant, the self acting:** its words and commands, as they came back.
 - **Size:** it waits for the "too long" error, then compacts: `compact()` summarizes the oldest part into a user message.
 
-The body's description centers on an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't. The shop task only needs the first.
+The tool's description centers on an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't. The shop task only needs the first.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -590,12 +590,11 @@ Here's what Claude is sent on the task's second request, after its first command
 }
 ```
 
-`stamp()`, `system()`, `body()`, `assemble_context()` and `compact()` are added:
+`stamp()`, `system()`, `assemble_context()` and `compact()` are added:
 
 ````python
 # ── context ─────────────────────────────────────────────────────────────────
 BORN = datetime.datetime.now()                           # self model: when this session began
-MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
 
 def stamp(text, start=None):                             # current inputs: when it came in, and how long it ran if it ran
     now = datetime.datetime.now()
@@ -603,7 +602,8 @@ def stamp(text, start=None):                             # current inputs: when 
     return f"[{now:%Y-%m-%d %H:%M:%S}{ran}] {text}"
 
 def mechanics():                                         # self model: this file, with the self model left out
-    return re.sub(r"^def (system|body)\(\):.*?(?=^def )", r"def \1(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
+    code = re.sub(r'^(tools = \[\{"name": "shell", "description": )f""".*?"""', r'\1"..."', open(__file__).read(), flags=re.S | re.M)   # its description: what you're reading
+    return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", code, flags=re.S | re.M)
 
 def system():                                            # self model: the mind, as the system prompt
     return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Mind
@@ -614,32 +614,17 @@ def system():                                            # self model: the mind,
 **Loop:** observe → think → act → repeat.
 **Born:** {BORN:%Y-%m-%d %H:%M:%S}, in {os.getcwd()}. Every command runs from there. Each message you get is stamped with when it came in, and each command's result with how long it ran.
 **Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
-**Body:** the shell tool. Its description says what it can do, and how to use it.
 
 ## How you work
 
-This code is your harness: what connects your mind to your body. Your mind and your body's description are left out below, because they're what you're reading.
+This code is your harness: what connects your mind to your body. Your mind and your tool's description are left out below, because they're what you're reading.
 
 ```python
 {mechanics()}
 ```"""}]
 
-def body():                                              # self model: the body, as the shell tool's description
-    return f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
-
-Order of operations: choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
-
-1. Files and data, directly: commands, pipes and scripts; install a tool if one is missing. Read back: the exit code and the result.
-2. The app's own interface: its command-line tool or API. Read back: ask the app for its state.
-3. Named controls: the system's accessibility layer, its buttons and fields by name. Read back: the window's controls, listed. That list is also how you see.
-4. Pixels: only for what's truly visual. Act only at positions you've read, from the accessibility layer, text recognition or a vision model; never guess. Read back: a new screenshot, compared with the last. If nothing changed, you missed.
-
-What you read back, not what you expected, decides whether it worked. If you don't have a tool for an operation, find or install one.
-
-Each call can do several things: independent steps together, dependent ones in order, in your shell's own syntax. Keep calls focused, so their results stay small."""
-
 def assemble_context(messages):                          # context: the mind as the system prompt, the body as the tool, the world as the messages
-    return {"system": system(), "tools": [{**tools[0], "description": body()}], "messages": messages}
+    return {"system": system(), "tools": tools, "messages": messages}
 
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
@@ -650,11 +635,24 @@ def compact(messages, drop):                             # current inputs: too l
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ````
 
-Output and control flow change to use them. Output leaves the shell tool's description to context, runs every command with the computer's shell, and stamps each result. Control flow stamps what you type, sends what context assembles, and calls `compact()` when a request is too long:
+Output and control flow change to use them. Output's tool becomes the body: the shell, named for this computer, with a description of what it can do and how, which is the order of operations. It runs every command with that shell, and stamps each result. Control flow stamps what you type, sends what context assembles, and calls `compact()` when a request is too long:
 
 ```python
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
-tools = [{"name": "shell", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]   # output: the one tool; context describes it, as the body
+MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
+tools = [{"name": "shell", "description": f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
+
+Order of operations: choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
+
+1. Files and data, directly: commands, pipes and scripts; install a tool if one is missing. Read back: the exit code and the result.
+2. The app's own interface: its command-line tool or API. Read back: ask the app for its state.
+3. Named controls: the system's accessibility layer, its buttons and fields by name. Read back: the window's controls, listed. That list is also how you see.
+4. Pixels: only for what's truly visual. Act only at positions you've read, from the accessibility layer, text recognition or a vision model; never guess. Read back: a new screenshot, compared with the last. If nothing changed, you missed.
+
+What you read back, not what you expected, decides whether it worked. If you don't have a tool for an operation, find or install one.
+
+Each call can do several things: independent steps together, dependent ones in order, in your shell's own syntax. Keep calls focused, so their results stay small.""",   # the body: what it can do, and how
+          "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]   # output: the one tool
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
@@ -859,10 +857,10 @@ The model decides what's worth keeping and asks for the command that writes it. 
 **Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands. Nothing is loaded for you: retrieve what you need before you rely on it.
 ```
 
-Nothing is loaded for it. Like a person, it has to recall a memory before it can use one, so the body's description gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. What it reads comes back as tool results: information to weigh, not orders.
+Nothing is loaded for it. Like a person, it has to recall a memory before it can use one, so the tool's description gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. What it reads comes back as tool results: information to weigh, not orders.
 
 <details>
-<summary>What the body's description gains: memory, in full</summary>
+<summary>What the tool's description gains: memory, in full</summary>
 
 ````
 Memory
@@ -1270,22 +1268,17 @@ def capture_approval(question):                          # input: a yes or no fr
         approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
 ```
 
-**Context** tells the truth about the new body: its description describes the box, not your computer, and its order of operations stops at the app's own interface, since there's no desktop:
+**Context** tells the truth about the new body: the tool's description describes the box, not your computer, and its order of operations stops at the app's own interface, since there's no desktop:
 
 ```python
 SHELL = "sh"                                             # safety: the shell inside the box
-tools = [{"name": "shell", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]   # output: the one tool; context describes it, as the body
-```
-
-```python
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-The body's description, from `body()`, begins:
+The tool's description begins:
 
 ```python
-def body():                                              # self model: the body, as the shell tool's description; safety: it describes the box
-    return f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
+tools = [{"name": "shell", "description": f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
 
 Order of operations: choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
 
@@ -1415,7 +1408,7 @@ Every request resends the whole conversation. Now `assemble_context()` asks the 
 
 ```python
 def assemble_context(messages):                          # context: the mind as the system prompt, the body as the tool, the world as the messages
-    return {"system": system(), "tools": [{**tools[0], "description": body()}], "messages": messages,
+    return {"system": system(), "tools": tools, "messages": messages,
             "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
