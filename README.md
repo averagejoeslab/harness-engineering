@@ -284,20 +284,19 @@ def nested(result):                                      # output: what a comman
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
-    calls = [block for block in output if block.type == "tool_use"]
-    approved = []
-    for block in calls:
-        print(f"$ {block.input['cmd']}")
-        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
-    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
-        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block, (result, exit, start) in zip(calls, done):
-        record(cmd=block.input["cmd"], exit=exit)       # observability
-        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
-        print(nested(result))
-        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
+    for block in output:
+        if block.type == "text": show(block.text)
+        if block.type == "tool_use":
+            print(f"$ {block.input['cmd']}")
+            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            result = done.stdout or f"(exit {done.returncode})"
+            print(nested(result))
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
+
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": message}]).content
+results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
 We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `└` is what that command printed:
@@ -340,29 +339,18 @@ In [`4_control_flow.py`](./4_control_flow.py), `control_flow()` is added:
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    messages = resume()                                  # persistence: an unfinished session comes back first
-    message = "" if messages else capture_input()
-    start_box()                                          # safety: every command runs in the box
-    drop = 0
-    if message: add(messages, {"role": "user", "content": stamp(message)})
+    messages = [{"role": "user", "content": capture_input()}]
     while True:
-        try:
-            if drop: messages, drop = compact(messages, drop), 0
-            response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
-            output = response.content
-            record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
-                   cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
-        except BadRequestError as e:                     # too long to send: summarize on the next pass
-            if "prompt is too long" not in str(e): raise
-            drop += 1
-            continue
-        add(messages, {"role": "assistant", "content": output})   # persistence: on disk before any command runs
+        output = request_response(max_tokens=16384, tools=tools, messages=messages).content
+        messages.append({"role": "assistant", "content": output})
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
-            add(messages, {"role": "user", "content": results})
+            messages.append({"role": "user", "content": results})
             continue
         if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        add(messages, {"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
+        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
+
+control_flow()
 ```
 
 We run it and type the task:
@@ -673,20 +661,38 @@ SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # se
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
-    calls = [block for block in output if block.type == "tool_use"]
-    approved = []
-    for block in calls:
-        print(f"$ {block.input['cmd']}")
-        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
-    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
-        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block, (result, exit, start) in zip(calls, done):
-        record(cmd=block.input["cmd"], exit=exit)       # observability
-        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
-        print(nested(result))
-        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
+    for block in output:
+        if block.type == "text": show(block.text)
+        if block.type == "tool_use":
+            print(f"$ {block.input['cmd']}")
+            start = datetime.datetime.now()
+            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            result = done.stdout or f"(exit {done.returncode})"
+            print(nested(result))
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
     return results
+
+# ── control flow ────────────────────────────────────────────────────────────
+def control_flow():                                      # control flow: defines the shape of the loop
+    messages, drop = [{"role": "user", "content": stamp(capture_input())}], 0   # current inputs: the conversation so far
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            output = request_response(max_tokens=16384, **assemble_context(messages)).content
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+        messages.append({"role": "assistant", "content": output})
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            messages.append({"role": "user", "content": results})
+            continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
+        messages.append({"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
+
+control_flow()
 ```
 
 We run it and ask who it is:
