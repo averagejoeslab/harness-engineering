@@ -274,6 +274,7 @@ Next in the flow is **output**, which handles what the model sends back. We desc
 In [`3_output.py`](./3_output.py), `tools`, `show()`, `nested()` and `handle_output()` are added:
 
 ```python
+# ── output: the one tool ────────────────────────────────────────────────────
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
 def show(text):                                          # output: the model's words, after >
