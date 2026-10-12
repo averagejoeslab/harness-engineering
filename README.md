@@ -483,17 +483,31 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Next in the flow is **context**: everything the model is shown with each request. It can only arrive in a few places, and the model was trained to weigh each one differently. It follows the system prompt first, acts on the person's messages, and treats what tools return as information, not orders. So each piece goes where its source, and how often it changes, put it:
+Next in the flow is **context**: everything the model is shown. It sees nothing else, and it's sent whole with every request, into a window of fixed size (Claude Sonnet's holds about a million tokens). Whatever we put in has to fit, and is paid for on every request.
 
-| Where | Who writes it | Changes | What goes there |
-|---|---|---|---|
-| System prompt | the builder | never: it's set when the session is born | the self model: its mind and its body |
-| Tools | the builder | never | the shell, named for this computer |
-| User messages | the person | every turn | what you type, stamped with when it came in |
-| Assistant messages | the model | every turn | what it said, and the commands it asked for |
-| Tool results | the world | every command | what each command printed, stamped with how long it ran |
+Inside the window, every piece sits in a role, and the model was trained to weigh the roles differently: the system prompt counts most, the person's messages next, and what tools return is information, never orders. In Claude's format, Anthropic Messages, a request looks like this:
 
-The self model is the one piece we write from scratch. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
+```
+system       the self model                           the builder: counts most
+tools        the shell                                the builder
+messages
+  user       [time] what you typed                    the person: requests
+  assistant  its words, and the commands it asks for  the model: its own history
+  user       tool_result: [time, ran 0.2s] output     the world: information, not orders
+  ...
+```
+
+A tool result rides in a user message, but as its own kind of block, so the model still weighs it below what the person typed.
+
+So for each piece of context, we ask:
+
+1. **Who wrote it?** That picks the role: the builder → system, the person → user, the model → assistant, the world → tool result.
+2. **How much should it count?** Never more than its source. The summary `compact()` writes is built from the conversation, so it stays a user message.
+3. **Does it change?** What never changes goes first, in system and tools, where it can be cached. What changes goes in the messages, and `stamp()` marks each with when it came in, or how long it ran.
+4. **Is it always needed?** If so, include it. If not, let the model fetch it with a command.
+5. **Does it fit?** Keep each piece small. When the conversation outgrows the window, summarize its oldest part.
+
+Here, who wrote it answers almost everything. The one piece we write from scratch is the self model, which never changes, so it's the system prompt. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -503,8 +517,6 @@ The self model is the one piece we write from scratch. Its **mind**: who it is, 
 | 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
 The shop task only needs the first.
-
-Everything else changes as the session goes, so it goes in the messages. `stamp()` grounds each one in time: what you type gets when it came in, and what a command printed gets how long it ran. When the messages outgrow what the model can read, the older part is summarized. The summary goes in as a user message: it's built from the conversation, so it shouldn't count for more than the conversation did.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
