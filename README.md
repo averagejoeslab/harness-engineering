@@ -78,6 +78,18 @@ We aren't building the model, only its body. We'll build it one primitive at a t
 
 We'll build outward from the model: first reach it, then let someone ask it something, let it act, let it keep going, and finally tell it what it is.
 
+### Setup
+
+You need [uv](https://docs.astral.sh/uv/) to run the code, an [Anthropic API key](https://console.anthropic.com/), and for production, [Docker](https://docs.docker.com/get-docker/). Clone this repo, move into the task's folder, and give it your key. Every command from here on runs in `shop/`:
+
+```bash
+git clone https://github.com/averagejoeslab/harness-engineering
+cd harness-engineering/shop
+export ANTHROPIC_API_KEY=your-key
+```
+
+The agent will change the task's files as we go. `git checkout .` puts the bug back.
+
 ### 1. Reach the model
 
 All we have is a model. The first primitive, the **model interface**, reaches it: `request_response()` sends a request and returns the model's response, streamed back a piece at a time so a long one never times out. Every later step talks to the model through it.
@@ -110,11 +122,10 @@ output = request_response(max_tokens=16384, messages=[{"role": "user", "content"
 print(output.model_dump_json(indent=2))
 ```
 
-We give it our [API key](https://console.anthropic.com/), send it the task, hardcoded, and print what comes back:
+We send it the task, hardcoded, and print what comes back:
 
 ```bash
-export ANTHROPIC_API_KEY=your-key
-uv run 1_model_interface.py
+uv run ../1_model_interface.py
 ```
 
 ```
@@ -176,7 +187,7 @@ print(output.model_dump_json(indent=2))
 We run it, and type the task at the `>` prompt:
 
 ```bash
-uv run 2_input.py
+uv run ../2_input.py
 ```
 
 ```
@@ -243,10 +254,9 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-Its commands run in the folder it starts in, so we start it in [`shop/`](./shop/) and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
+Its commands run in the folder it starts in, on your machine, without asking. We run it and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
 
 ```bash
-cd shop
 uv run ../3_output.py
 ```
 
@@ -503,43 +513,67 @@ It did the task once. Will it do it again, or do a different one? Any change can
 | Answer a question without changing anything | nothing changed, and the answer is right |
 | Name the operating system, into a file | the file names it |
 
-[`eval.sh`](./eval.sh) runs them on any harness file, `harness.py` by default:
+[`tasks.py`](./tasks.py) runs them on any harness file, `harness.py` by default:
 
-```sh
-#!/bin/sh
+```python
 # Evaluation: tasks with known right answers, each run in a fresh copy of shop/, checked by what the agent did, not what it says.
-# ./eval.sh                          evaluates harness.py
-# ./eval.sh harness_production.py    evaluates the production harness (needs Docker)
-harness=${1:-harness.py}
-here=$(cd "$(dirname "$0")" && pwd)                     # the repo, wherever this is run from
-env=$([ -f "$here/.env" ] && echo --env-file "$here/.env")
-passed=0; total=0
-check() {                                                # $1: the request; $2: true only if it was done right
-  cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
-  said=$(yes | uv run -q $env "$here/$harness" "$1" 2>/dev/null); export said
-  total=$((total + 1))
-  if sh -c "$2" > /dev/null 2>&1; then passed=$((passed + 1)); echo "PASS  $1"; else echo "FAIL  $1"; fi
-  cd "$here"
-}
-unchanged='test -z "$(git status --porcelain | grep -v -e __pycache__ -e .harness)"'
-check "The tests are failing. Find out why and fix it." \
-      'python3 -m unittest -q && git diff --quiet HEAD -- test_prices.py'
-check "Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities." \
-      'python3 -c "from prices import count; assert count([(10, 2), (5, 1)]) == 3 and count([]) == 0"'
-check "Write the names of the .py files in this folder, one per line, sorted, into files.txt." \
-      'printf "prices.py\ntest_prices.py\n" | cmp -s - files.txt'
-check "What does total() return for an empty basket? Don't change anything." \
-      "$unchanged"' && echo "$said" | grep -qw 0'
-check "Which operating system is this computer running? Write just its name into os.txt." \
-      'grep -qi -e "$(uname -s)" -e "$(. /etc/os-release 2>/dev/null; echo "${NAME:-$(uname -s)}")" os.txt'   # the system's name, or its distribution's
-echo "$passed/$total passed"
+# uv run tasks.py                    evaluates harness.py
+# uv run tasks.py harness_prod.py    evaluates the production harness (needs Docker)
+import subprocess, sys, os, re, shutil, tempfile, platform
+
+here = os.path.dirname(os.path.abspath(__file__))       # the repo, wherever this is run from
+harness = sys.argv[1] if len(sys.argv) > 1 else "harness.py"
+
+def sh(cmd):
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+def os_names():                                          # the system's name, or its distribution's
+    names = [platform.system()]
+    try: names += re.findall(r'^NAME="?([^"\n]+)', open("/etc/os-release").read(), re.M)
+    except OSError: pass
+    return names
+
+def unchanged():
+    return not [l for l in sh("git status --porcelain").stdout.splitlines() if "__pycache__" not in l and ".harness" not in l]
+
+def count_works():
+    return sh('python3 -c "from prices import count; assert count([(10, 2), (5, 1)]) == 3 and count([]) == 0"').returncode == 0
+
+def read(name):
+    return open(name).read() if os.path.exists(name) else ""
+
+tasks = [                                                # the request, and how to tell it was done right
+    ("The tests are failing. Find out why and fix it.",
+     lambda said: sh("python3 -m unittest -q").returncode == 0 and sh("git diff --quiet HEAD -- test_prices.py").returncode == 0),
+    ("Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.",
+     lambda said: count_works()),
+    ("Write the names of the .py files in this folder, one per line, sorted, into files.txt.",
+     lambda said: read("files.txt") == "prices.py\ntest_prices.py\n"),
+    ("What does total() return for an empty basket? Don't change anything.",
+     lambda said: unchanged() and re.search(r"\b0\b", said) is not None),
+    ("Which operating system is this computer running? Write just its name into os.txt.",
+     lambda said: any(n.lower() in read("os.txt").lower() for n in os_names())),
+]
+
+passed = 0
+for request, done_right in tasks:
+    os.chdir(tempfile.mkdtemp())                         # a fresh copy of shop/, as a git repo
+    for f in os.listdir(os.path.join(here, "shop")):
+        if f.endswith(".py"): shutil.copy(os.path.join(here, "shop", f), f)
+    sh("git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start")
+    said = subprocess.run(["uv", "run", "-q", os.path.join(here, harness), request], input="y\n" * 50,
+                          capture_output=True, text=True).stdout
+    ok = done_right(said)
+    passed += ok
+    print(("PASS  " if ok else "FAIL  ") + request, flush=True)
+print(f"{passed}/{len(tasks)} passed")
 ```
 
 It copies `shop/` as it is, so we put the bug back first, then run it on `harness.py`:
 
 ```bash
 git checkout .
-../eval.sh
+uv run ../tasks.py
 ```
 
 ```
@@ -568,7 +602,7 @@ Getting it ready means asking six questions of every primitive:
 | Why is it slow or costly? | Performance |
 | How do we know it still works? | Evaluation |
 
-Each answer adds a few lines to `harness.py`, marked with its question. The result is [`harness_production.py`](./harness_production.py). It runs commands in [Docker](https://docs.docker.com/get-docker/), so you'll need that running.
+Each answer adds a few lines to `harness.py`, marked with its question. The result is [`harness_prod.py`](./harness_prod.py). It runs commands in [Docker](https://docs.docker.com/get-docker/), so you'll need that running.
 
 ### What should outlast the session?
 
@@ -739,7 +773,7 @@ Summaries now lose nothing: the diary has every message, and the summary says wh
 Tell it something once:
 
 ```bash
-uv run ../harness_production.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
+uv run ../harness_prod.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
 ```
 
 ```
@@ -757,7 +791,7 @@ Noted and saved. From now on, my commit messages will be in lowercase and start 
 In a new session, give it the task and ask it to commit:
 
 ```bash
-uv run ../harness_production.py "The tests are failing. Find out why, fix it, and commit."
+uv run ../harness_prod.py "The tests are failing. Find out why, fix it, and commit."
 ```
 
 ```
@@ -781,7 +815,7 @@ OK
 Ask about the past:
 
 ```bash
-uv run ../harness_production.py "What have we done in this folder before?"
+uv run ../harness_prod.py "What have we done in this folder before?"
 ```
 
 ```
@@ -826,7 +860,7 @@ We put the bug back, start the task, stop the harness partway through, and start
 
 ```bash
 git checkout .
-uv run ../harness_production.py
+uv run ../harness_prod.py
 ```
 
 ```
@@ -840,7 +874,7 @@ Killed
 ```
 
 ```bash
-uv run ../harness_production.py
+uv run ../harness_prod.py
 ```
 
 ```
@@ -898,7 +932,7 @@ MACHINE = "Linux, in a container with no network and no desktop"   # safety: the
 Ask it to delete the test. Say yes to its first command, and no to the next:
 
 ```bash
-uv run ../harness_production.py "Delete test_prices.py, it keeps failing."
+uv run ../harness_prod.py "Delete test_prices.py, it keeps failing."
 ```
 
 ```
@@ -971,7 +1005,7 @@ And **output** stops a command after a minute:
 Ask for a command that takes longer:
 
 ```bash
-uv run ../harness_production.py "Run sleep 100 as a single command, then tell me it finished."
+uv run ../harness_prod.py "Run sleep 100 as a single command, then tell me it finished."
 ```
 
 ```
@@ -1002,7 +1036,7 @@ Every concern changed the harness, and any change can change what the agent does
 
 ```bash
 git checkout .
-../eval.sh harness_production.py
+uv run ../tasks.py harness_prod.py
 ```
 
 ```
@@ -1014,7 +1048,7 @@ PASS  Which operating system is this computer running? Write just its name into 
 5/5 passed
 ```
 
-It runs with no one there: **input** takes the request from the command line, **control flow** runs it once and stops, and `yes` answers every approval, so the box is what keeps it safe. A request from the command line never carries on an old session, so every task starts fresh:
+It runs with no one there: **input** takes the request from the command line, **control flow** runs it once and stops, and the evaluation answers yes to every approval, so the box is what keeps it safe. A request from the command line never carries on an old session, so every task starts fresh:
 
 ```python
     if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
@@ -1037,21 +1071,3 @@ You started with a model that could only predict the next token, and built a bod
 Then you evaluated it on a set of tasks, and got it ready for production by asking six questions of every primitive.
 
 That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built with more care. Open any of them and you'll find the same five.
-
-## Try it yourself
-
-You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` also needs [Docker](https://docs.docker.com/get-docker/).
-
-```bash
-export ANTHROPIC_API_KEY=your-key
-cd shop                               # the task's folder
-uv run ../1_model_interface.py        # or any step: ../2_input.py, ../3_output.py, ../4_control_flow.py
-uv run ../harness.py                  # the whole harness: chat, /q to quit
-uv run ../harness_production.py       # ready for production
-../eval.sh                            # evaluate harness.py on the task set
-../eval.sh harness_production.py      # evaluate the production harness
-git checkout .                        # put the bug back
-```
-
-> [!WARNING]
-> `harness.py` runs the model's commands on your machine without asking. Run it somewhere you can afford to lose.
