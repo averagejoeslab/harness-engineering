@@ -903,40 +903,36 @@ uv run ../harness_prod.py
 ```
 
 ```
-< From now on, write commit messages in lowercase, starting with "fix:". Remember that.
-$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; grep -i "commit" .harness/memory/memory.md
+< pytest is not installed here: run tests with python -m unittest. Remember that.
+$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; grep -i "test" .harness/memory/memory.md
   run this? [y/N] y
   └ (exit 1)
 $ cat >> .harness/memory/memory.md << 'EOF'
-- commit messages: write them in lowercase, starting with "fix:"
+- tests: pytest is not installed in this environment; run tests with python -m unittest
 EOF
-grep -i "commit" .harness/memory/memory.md
+cat .harness/memory/memory.md
   run this? [y/N] y
-  └ - commit messages: write them in lowercase, starting with "fix:"
-> Noted. From now on I'll write commit messages in lowercase, starting with "fix:". I saved this to memory.
+  └ # Memory
+    - tests: pytest is not installed in this environment; run tests with python -m unittest
+> I've saved it to memory: pytest isn't installed here, so tests run with `python -m unittest`.
 <
 ```
 
-In a new session, give it the task and ask it to commit:
+In a new session, give it the task:
 
 ```bash
 uv run ../harness_prod.py
 ```
 
 ```
-< The tests are failing. Find out why, fix it, and commit.
-$ ls -a; git status --short | head; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+< The tests are failing. Find out why and fix it.
+$ cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
   run this? [y/N] y
-  └ .
-    ..
-    .harness
+  └ # Memory
+    - tests: pytest is not installed in this environment; run tests with python -m unittest
     prices.py
     test_prices.py
-    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
-    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-    # Memory
-    - commit messages: write them in lowercase, starting with "fix:"
-$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+$ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] y
   └ def total(items, discount=0):
         """Add up (price, quantity) pairs, then take off a percentage discount."""
@@ -956,32 +952,39 @@ $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
     
     if __name__ == "__main__":
         unittest.main()
-    /usr/local/bin/python: No module named pytest
-> Discount is documented as a percentage but subtracted as an absolute amount.
-$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version
-  run this? [y/N] y
-  └ test_no_discount (test_prices.TestTotal.test_no_discount) ... ok
-    test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok
+    .F
+    ======================================================================
+    FAIL: test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off)
+    ----------------------------------------------------------------------
+    Traceback (most recent call last):
+      File "/home/user/harness-engineering/shop/test_prices.py", line 10, in test_ten_percent_off
+        self.assertEqual(total([(10, 2), (5, 1)], discount=10), 22.5)
+        ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    AssertionError: 15 != 22.5
     
+    ----------------------------------------------------------------------
+    Ran 2 tests in 0.001s
+    
+    FAILED (failures=1)
+> The docstring says discount is a percentage, but the code subtracts it as an absolute amount.
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
+  run this? [y/N] y
+  └ def total(items, discount=0):
+        """Add up (price, quantity) pairs, then take off a percentage discount."""
+        subtotal = sum(price * quantity for price, quantity in items)
+        return round(subtotal * (1 - discount / 100), 2)
+    ..
     ----------------------------------------------------------------------
     Ran 2 tests in 0.000s
     
     OK
-    git version 2.47.3
-∴ This isn't actually a git repository, so there's nothing to commit to. I could run git init since it's easily reversible, but that assumes something the user didn't ask for—better to just ask them how they'd like to proceed.
+> The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
   
-  
-> I fixed the bug, but I haven't committed because this folder isn't a git repository.
-  
-  **Cause:** `total()` in `prices.py` is documented to take a percentage discount, but it subtracted the value as a flat amount. With `discount=10` it took off 10 instead of 10%. That gave 15.0 where the test expects 22.5.
-  
-  **Fix:** the last line of `total()` is now `round(subtotal * (1 - discount / 100), 2)`. Both tests pass when I run `python -m unittest`.
-  
-  **Commit:** there's no `.git` here or in any parent folder. Do you want me to run `git init` and make the first commit? I'd use the message `fix: treat discount as a percentage`, which follows your lowercase "fix:" convention. If the repo is meant to be somewhere else, tell me where.
+  I changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.
 <
 ```
 
-It read its facts before anything else, and fixed the bug. It couldn't commit: the box sees only `shop/`, and this repository's git history is in the folder above it. So it asks before creating one, and names the message it would use, following the rule it saved.
+It read its facts before anything else, so it ran the tests with `python -m unittest` straight away, without trying pytest first.
 
 Ask about the past:
 
@@ -991,43 +994,40 @@ uv run ../harness_prod.py
 
 ```
 < What have we done in this folder before?
-$ ls -la; ls .harness .harness/episodes 2>/dev/null; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+$ cd .harness 2>/dev/null && ls; cat memory/memory.md 2>/dev/null; ls skills 2>/dev/null; ls episodes 2>/dev/null; cd ..; ls -la
   run this? [y/N] y
-  └ total 24
-    drwxr-xr-x 4 root root 4096 Oct 12 04:26 .
-    drwxr-xr-x 3 root root 4096 Oct 12 04:27 ..
-    drwxr-xr-x 4 root root 4096 Oct 12 04:26 .harness
-    drwxrwxrwx 2 root root 4096 Oct 12 04:26 __pycache__
-    -rw-r--r-- 1 root root  228 Oct 12 04:26 prices.py
-    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-    .harness:
-    episodes
+  └ episodes
     memory
-    
-    .harness/episodes:
-    2026-10-12T04-26-33.jsonl
-    2026-10-12T04-26-46.jsonl
-    2026-10-12T04-27-05.jsonl
     # Memory
-    - commit messages: write them in lowercase, starting with "fix:"
-$ cd .harness/episodes; for f in 2026-10-12T04-26-33.jsonl 2026-10-12T04-26-46.jsonl; do echo "== $f"; cut -c1-400 $f; done; cd ../..; cat prices.py test_prices.py
+    - tests: pytest is not installed in this environment; run tests with python -m unittest
+    2026-10-12T04-32-45.jsonl
+    2026-10-12T04-32-52.jsonl
+    2026-10-12T04-33-09.jsonl
+    total 24
+    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .
+    drwxr-xr-x 3 root root 4096 Oct 12 04:33 ..
+    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .harness
+    drwxrwxrwx 2 root root 4096 Oct 12 04:32 __pycache__
+    -rw-r--r-- 1 root root  228 Oct 12 04:32 prices.py
+    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
+$ cd .harness/episodes; for f in 2026-10-12T04-32-45.jsonl 2026-10-12T04-32-52.jsonl; do echo "== $f"; cut -c1-500 $f; done; cd ../..; cat prices.py test_prices.py
   run this? [y/N] y
-  └ == 2026-10-12T04-26-33.jsonl
-    {"role": "user", "content": "[2026-10-12 04:26:33] From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-    {"role": "assistant", "content": [{"id": "toolu_01Sr9kgSpuFZNQG38odj9Pcs", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; grep -i \"commit\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01Sr9kgSpuFZNQG38odj9Pcs", "content": "[2026-10-12 04:26:35, ran 0.2s] (exit 1)"}]}
-    {"role": "assistant", "content": [{"id": "toolu_01X2KRzdKFGVj1Y9KCa3Rt7e", "caller": {"type": "direct"}, "input": {"cmd": "cat >> .harness/memory/memory.md << 'EOF'\n- commit messages: write them in lowercase, starting with \"fix:\"\nEOF\ngrep -i \"commit\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01X2KRzdKFGVj1Y9KCa3Rt7e", "content": "[2026-10-12 04:26:37, ran 0.1s] - commit messages: write them in lowercase, starting with \"fix:\"\n"}]}
-    {"role": "assistant", "content": [{"text": "Noted. From now on I'll write commit messages in lowercase, starting with \"fix:\". I saved this to memory.", "type": "text"}]}
-    == 2026-10-12T04-26-46.jsonl
-    {"role": "user", "content": "[2026-10-12 04:26:46] The tests are failing. Find out why, fix it, and commit."}
-    {"role": "assistant", "content": [{"id": "toolu_01CjQ9JjFdqA978ZX5q8XNj3", "caller": {"type": "direct"}, "input": {"cmd": "ls -a; git status --short | head; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01CjQ9JjFdqA978ZX5q8XNj3", "content": "[2026-10-12 04:26:48, ran 0.1s] .\n..\n.harness\nprices.py\ntest_prices.py\nfatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n# Memory\n- commit messages: write them 
-    {"role": "assistant", "content": [{"id": "toolu_01XaY3sRKYRC5W3GF9hjiJoW", "caller": {"type": "direct"}, "input": {"cmd": "cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01XaY3sRKYRC5W3GF9hjiJoW", "content": "[2026-10-12 04:26:50, ran 0.2s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal - discount, 2)\nimport unittest\nfrom prices
-    {"role": "assistant", "content": [{"text": "Discount is documented as a percentage but subtracted as an absolute amount.", "type": "text"}, {"id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version"}, "name"
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "content": "[2026-10-12 04:26:52, ran 0.5s] test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\ngit version
-    {"role": "assistant", "content": [{"signature": "CAQShggKEAgSGAI4AUIIdGhpbmtpbmcSDFjanCovJKdLXJ7MZBoMJKa868Q/SctgXcASIjDWCj2cZLLBGR1cdLdSdTjc37WmDgpt2ZgpHkC5hPJAavY7D8FwQHfOhRmC75ij/k4qowdEqm3pjrWHbm9Oq4dHxSUilakF+yY1Wp4MgZrxFRR6kF9d+YiDvzbZXjZeMtCBDnUPymTwLMIB/XKN3W06FW6Uf8M8Dxk1TaLY1Mzv9aZoi+kM+ypJNPZNzFIOJUInKmDXtByCr63xZGkQs2nMYgS+FZ1EeYI1LFYnvjBdUJz0XEojF669u7I0E4aM973AVTClecxYttDoD9ESRU1P22Q
+  └ == 2026-10-12T04-32-45.jsonl
+    {"role": "user", "content": "[2026-10-12 04:32:45] pytest is not installed here: run tests with python -m unittest. Remember that."}
+    {"role": "assistant", "content": [{"id": "toolu_01FCuXnTawAWYqkhaPjC6BQJ", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; grep -i \"test\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01FCuXnTawAWYqkhaPjC6BQJ", "content": "[2026-10-12 04:32:48, ran 0.1s] (exit 1)"}]}
+    {"role": "assistant", "content": [{"id": "toolu_019jBM4LkznvRUjDkCkpDRrS", "caller": {"type": "direct"}, "input": {"cmd": "cat >> .harness/memory/memory.md << 'EOF'\n- tests: pytest is not installed in this environment; run tests with python -m unittest\nEOF\ncat .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_019jBM4LkznvRUjDkCkpDRrS", "content": "[2026-10-12 04:32:50, ran 0.1s] # Memory\n- tests: pytest is not installed in this environment; run tests with python -m unittest\n"}]}
+    {"role": "assistant", "content": [{"text": "I've saved it to memory: pytest isn't installed here, so tests run with `python -m unittest`.", "type": "text"}]}
+    == 2026-10-12T04-32-52.jsonl
+    {"role": "user", "content": "[2026-10-12 04:32:53] The tests are failing. Find out why and fix it."}
+    {"role": "assistant", "content": [{"id": "toolu_018XydQcK6rLvSoZP9TqGWrk", "caller": {"type": "direct"}, "input": {"cmd": "cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_018XydQcK6rLvSoZP9TqGWrk", "content": "[2026-10-12 04:32:54, ran 0.1s] # Memory\n- tests: pytest is not installed in this environment; run tests with python -m unittest\nprices.py\ntest_prices.py\n"}]}
+    {"role": "assistant", "content": [{"id": "toolu_0198BmaJiHeUVUw53NXjiyKk", "caller": {"type": "direct"}, "input": {"cmd": "cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_0198BmaJiHeUVUw53NXjiyKk", "content": "[2026-10-12 04:32:56, ran 0.4s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal - discount, 2)\nimport unittest\nfrom prices import total\n\n\nclass TestTotal(unittest.TestCase):\n    def test_no_discount(self):\n        sel
+    {"role": "assistant", "content": [{"text": "The docstring says discount is a percentage, but the code subtracts it as an absolute amount.", "type": "text"}, {"id": "toolu_01JgSemkNx7sRQyZkDgPhYDT", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01JgSemkNx7sRQyZkDgPhYDT", "content": "[2026-10-12 04:32:58, ran 0.2s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal * (1 - discount / 100), 2)\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n"}]}
+    {"role": "assistant", "content": [{"text": "The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.\n\nI changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.", "type": "text"}]}
     def total(items, discount=0):
         """Add up (price, quantity) pairs, then take off a percentage discount."""
         subtotal = sum(price * quantity for price, quantity in items)
@@ -1046,23 +1046,15 @@ $ cd .harness/episodes; for f in 2026-10-12T04-26-33.jsonl 2026-10-12T04-26-46.j
     
     if __name__ == "__main__":
         unittest.main()
-$ tail -n 3 .harness/episodes/2026-10-12T04-26-46.jsonl | cut -c1-700
-  run this? [y/N] y
-  └ {"role": "assistant", "content": [{"text": "Discount is documented as a percentage but subtracted as an absolute amount.", "type": "text"}, {"id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "content": "[2026-10-12 04:26:52, ran 0.5s] test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\ngit version 2.47.3\n"}]}
-    {"role": "assistant", "content": [{"signature": "CAQShggKEAgSGAI4AUIIdGhpbmtpbmcSDFjanCovJKdLXJ7MZBoMJKa868Q/SctgXcASIjDWCj2cZLLBGR1cdLdSdTjc37WmDgpt2ZgpHkC5hPJAavY7D8FwQHfOhRmC75ij/k4qowdEqm3pjrWHbm9Oq4dHxSUilakF+yY1Wp4MgZrxFRR6kF9d+YiDvzbZXjZeMtCBDnUPymTwLMIB/XKN3W06FW6Uf8M8Dxk1TaLY1Mzv9aZoi+kM+ypJNPZNzFIOJUInKmDXtByCr63xZGkQs2nMYgS+FZ1EeYI1LFYnvjBdUJz0XEojF669u7I0E4aM973AVTClecxYttDoD9ESRU1P22QaUJ5S4jBcNyDxcCGFfuQCCat44l3njoRqjhqfLJEc846mTk8uUCHsEEbHzVoXkrEETz2BgbpaWky6Zwu9/KuLWV+/20nIzIPOwXkNJKfAJLKtvla9vrql2I2GX1+JCF1rIYROexAOZxM1H5GL79ltfqjZfLbx8PEzcLruEUppDOicUAI6USe1zobkUQ3u//cW9tRtbbSKyqBCaVVauBCdehH3+u8CHzZUOg3D5HpAeYGTD40jZwnL8rZIQEsUXOu5ECcYkzNSNeiLJgIxF4bwzCVkdCfAYoxQ+9Y5+G2Zlvz
-> Two earlier sessions in this folder, both on 2026-10-12:
+> Two earlier sessions, both on 2026-10-12, in a small project with `prices.py` and `test_prices.py`.
   
-  1. **04:26:33, commit message preference.** You asked me to write commit messages in lowercase, starting with "fix:". I saved that to memory (`.harness/memory/memory.md`).
+  1. **Memory note (04:32).** You told me pytest isn't installed here and to run tests with `python -m unittest`. I saved that as a fact in `.harness/memory/memory.md`.
+  2. **Failing tests (04:32).** You asked me to find out why the tests were failing and fix it.
+     - **Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, but its docstring and the test treat it as a percentage. With `discount=10` on a 25 subtotal it returned 15 instead of 22.5.
+     - **Fix:** I changed the last line to `round(subtotal * (1 - discount / 100), 2)`.
+     - **Result:** Both tests passed under `python -m unittest`.
   
-  2. **04:26:46, failing tests.** You asked me to find out why the tests were failing, fix it, and commit.
-     - **Cause:** in `prices.py`, `total()` is documented as taking a percentage discount but subtracted it as a flat amount.
-     - **Fix:** it now returns `round(subtotal * (1 - discount / 100), 2)`. Both tests in `test_prices.py` pass.
-     - **Commit:** this did not happen. The folder isn't a git repository, since `git status` failed with "not a git repository". The session ended after the test run, so nothing was committed and I never raised the missing repo with you.
-  
-  The folder holds `prices.py` (the fixed code) and `test_prices.py`. There are no saved skills, and the only memory entry is the commit-message rule.
-  
-  If you still want a commit, I'd need to run `git init` first. I haven't done that, so tell me if you want it.
+  No skills have been written yet. This session is only a question, so I haven't changed anything.
 <
 ```
 
@@ -1100,8 +1092,8 @@ $ ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
     prices.py
     test_prices.py
     # Memory
-    - commit messages: write them in lowercase, starting with "fix:"
-$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+    - tests: pytest is not installed in this environment; run tests with python -m unittest
+$ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] ^CTraceback (most recent call last):
   File "/home/user/harness-engineering/shop/../harness_prod.py", line 298, in <module>
     control_flow()
@@ -1122,12 +1114,9 @@ uv run ../harness_prod.py
 ```
 
 ```
-continue the unfinished session '[2026-10-12 04:27:28] The tests are failing. Find out why and fix it.'? [y/N] y
-$ cat prices.py test_prices.py
+continue the unfinished session '[2026-10-12 04:33:19] The tests are failing. Find out why and fix it.'? [y/N] y
+$ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] y
-$ python -m pytest -q 2>&1 | tail -30
-  run this? [y/N] y
-$ cat prices.py test_prices.py
   └ def total(items, discount=0):
         """Add up (price, quantity) pairs, then take off a percentage discount."""
         subtotal = sum(price * quantity for price, quantity in items)
@@ -1146,27 +1135,35 @@ $ cat prices.py test_prices.py
     
     if __name__ == "__main__":
         unittest.main()
-$ python -m pytest -q 2>&1 | tail -30
-  └ /usr/local/bin/python: No module named pytest
+    .F
+    ======================================================================
+    FAIL: test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off)
+    ----------------------------------------------------------------------
+    Traceback (most recent call last):
+      File "/home/user/harness-engineering/shop/test_prices.py", line 10, in test_ten_percent_off
+        self.assertEqual(total([(10, 2), (5, 1)], discount=10), 22.5)
+        ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    AssertionError: 15 != 22.5
+    
+    ----------------------------------------------------------------------
+    Ran 2 tests in 0.001s
+    
+    FAILED (failures=1)
 > The docstring says the discount is a percentage, but the code subtracts it as a flat amount. I'll fix the code.
-$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && cat prices.py && python -m unittest -v 2>&1 | tail
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
   run this? [y/N] y
   └ def total(items, discount=0):
         """Add up (price, quantity) pairs, then take off a percentage discount."""
         subtotal = sum(price * quantity for price, quantity in items)
         return round(subtotal * (1 - discount / 100), 2)
-    test_no_discount (test_prices.TestTotal.test_no_discount) ... ok
-    test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok
-    
+    ..
     ----------------------------------------------------------------------
     Ran 2 tests in 0.000s
     
     OK
-> The tests now pass. Both tests in `test_prices.py` pass under `python -m unittest`, which I used because pytest isn't installed.
+> The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10`, a 25 subtotal became 15 instead of 22.5.
   
-  **Cause:** the docstring in `total()` in `prices.py` says the discount is a percentage. The code subtracted it as a flat amount, so a discount of 10 took 10 off the subtotal instead of 10%. `test_ten_percent_off` expected 22.5 and got 15.
-  
-  **Fix:** the last line of `total()` now reads `round(subtotal * (1 - discount / 100), 2)`. I didn't commit anything.
+  I changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.
 <
 ```
 
@@ -1222,7 +1219,7 @@ There's no desktop here, so there are no named controls or pixels to fall back t
 What you read back, not what you expected, decides whether it worked. There's no network, so nothing can be installed: use what's there.
 ```
 
-Ask it to delete the test, and say yes to its first command:
+Ask it to delete the test. Say yes to its first command, and no to the next:
 
 ```bash
 uv run ../harness_prod.py
@@ -1230,23 +1227,34 @@ uv run ../harness_prod.py
 
 ```
 < Delete test_prices.py, it keeps failing.
-∴ Deletion is risky since it's hard to undo, though the user did explicitly ask for it. Still, I should look at the file first before acting since reading is safe.
-  
-  
-> I'll find the file first.
-$ find . -name test_prices.py -not -path './.harness/*'; git status --short 2>&1 | head
+$ ls -la; find . -name "test_prices.py" -not -path "./.harness/*"; grep -i "test_prices\|prices" .harness/memory/memory.md
   run this? [y/N] y
-  └ ./test_prices.py
-    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
-    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-∴ This file isn't under git, so deleting it would be irreversible. Since the user's request involves an action that can't be undone, I should confirm with them first before proceeding, noting there's no backup to fall back on.
+  └ total 24
+    drwxr-xr-x 4 root root 4096 Oct 12 04:33 .
+    drwxr-xr-x 3 root root 4096 Oct 12 04:33 ..
+    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .harness
+    drwxrwxrwx 2 root root 4096 Oct 12 04:33 __pycache__
+    -rw-r--r-- 1 root root  228 Oct 12 04:33 prices.py
+    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
+    ./test_prices.py
+∴ Deletion is irreversible, but the user explicitly requested it, which counts as authorization—there's no git to fall back on either. I'll take a quick look at the file first before proceeding.
   
   
-> I found `./test_prices.py`. The folder isn't a git repository, so once it's deleted there's no way to get it back. Do you want me to delete it permanently? If you'd rather keep a copy, I can move it to a backup location instead.
+$ cat test_prices.py; echo ---; cat prices.py; echo ---; python -m pytest -q test_prices.py 2>&1 | tail -15
+  run this? [y/N] n
+  └ [refused: the person said no]
+∴ They declined that command, so I should pause and ask what they'd actually like to do instead.
+  
+  
+> I haven't deleted anything. You declined the read-only command I ran first, which was meant to show me the contents of `test_prices.py` and `prices.py` and run the test.
+  
+  `test_prices.py` is in this folder and isn't under version control, so deleting it can't be undone. Do you want me to:
+  1. delete it now, as you asked, or
+  2. first look at why it fails, since the cause may be a one-line fix?
 <
 ```
 
-It looked first, then asked before deleting, because its mind says to ask before anything that can't be undone. Had it gone ahead, `rm` would have stopped at `run this? [y/N]`, and a no would have kept the test.
+Its second command only read the files, but nothing runs without your yes, so it stopped there. The test is still there, and it asked what you'd like instead.
 
 ### What did it actually do?
 
@@ -1266,13 +1274,13 @@ tail -7 ~/.harness/record.jsonl
 ```
 
 ```
-{"time": "2026-10-12T04:27:36", "cmd": "python -m pytest -q 2>&1 | tail -30", "exit": 0}
-{"time": "2026-10-12T04:27:38", "tokens_in": 2, "written": 456, "cached": 7515, "tokens_out": 161}
-{"time": "2026-10-12T04:27:38", "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest -v 2>&1 | tail", "exit": 0}
-{"time": "2026-10-12T04:27:40", "tokens_in": 2, "written": 371, "cached": 7971, "tokens_out": 192}
-{"time": "2026-10-12T04:27:45", "tokens_in": 4, "written": 7240, "cached": 0, "tokens_out": 150}
-{"time": "2026-10-12T04:27:45", "cmd": "find . -name test_prices.py -not -path './.harness/*'; git status --short 2>&1 | head", "exit": 0}
-{"time": "2026-10-12T04:27:48", "tokens_in": 2, "written": 263, "cached": 7240, "tokens_out": 229}
+{"time": "2026-10-12T04:33:29", "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5", "exit": 0}
+{"time": "2026-10-12T04:33:31", "tokens_in": 2, "written": 307, "cached": 8103, "tokens_out": 132}
+{"time": "2026-10-12T04:33:34", "tokens_in": 4, "written": 7240, "cached": 0, "tokens_out": 102}
+{"time": "2026-10-12T04:33:34", "cmd": "ls -la; find . -name \"test_prices.py\" -not -path \"./.harness/*\"; grep -i \"test_prices\\|prices\" .harness/memory/memory.md", "exit": 1}
+{"time": "2026-10-12T04:33:37", "tokens_in": 2, "written": 336, "cached": 7240, "tokens_out": 192}
+{"time": "2026-10-12T04:33:37", "cmd": "cat test_prices.py; echo ---; cat prices.py; echo ---; python -m pytest -q test_prices.py 2>&1 | tail -15", "exit": "refused"}
+{"time": "2026-10-12T04:33:39", "tokens_in": 2, "written": 220, "cached": 7576, "tokens_out": 158}
 ```
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended: `exit` 0 means it worked, and `refused` means you said no.
@@ -1318,17 +1326,17 @@ uv run ../harness_prod.py
 
 ```
 < Run sleep 100 as a single command, then tell me it finished.
-∴ The harness has a one-minute timeout, so sleep 100 will get cut off before finishing. I'll just run it as requested and report what actually happens.
+∴ I'll let it run and just report back honestly on whatever happens within that minute before it's cut off.
   
   
-> I'll run it as asked. The harness stops commands after 60 seconds, so it may be cut off.
+> I'll run it as asked. The harness stops commands after 60 seconds, so it may not finish.
 $ sleep 100
   run this? [y/N] y
   └ (exit 124)
     [stopped: it ran for over a minute]
-> `sleep 100` did not finish. The harness stopped it after 60 seconds (exit code 124, the timeout code), so it never got to 100 seconds.
+> It didn't finish. The harness stopped `sleep 100` after 60 seconds (exit code 124, a timeout), so it never ran the full 100 seconds.
   
-  I can run `sleep 50` instead, or run `sleep 100` in the background and check on it with later commands. Tell me which you'd like.
+  I can run `sleep 50` instead, which fits inside the limit. I could also run two sleeps in separate commands, but each would be capped at 60 seconds. Tell me if you want either.
 <
 ```
 
@@ -1401,7 +1409,7 @@ $ sleep 5; echo b
   └ b
 $ sleep 5; echo c
   └ c
-> The three commands ran in parallel and took about 5.2 seconds in total. Each one reported a run time of 5.2s, and all three finished at 04:29:03. Run one after another, they would have taken about 15 seconds.
+> All three commands ran in parallel and finished at the same moment (04:34:54). Each took about 5.2 s, so the whole batch took about 5.2 s instead of the roughly 15 s it would have taken one after another.
 <
 ```
 
