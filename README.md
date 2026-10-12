@@ -925,18 +925,17 @@ uv run ../harness_prod.py
 
 ```
 < The tests are failing. Find out why, fix it, and commit.
-$ cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
+$ ls -a; git status --short | head; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
   run this? [y/N] y
-  └ # Memory
-    - commit messages: write them in lowercase, starting with "fix:"
-    __pycache__
+  └ .
+    ..
+    .harness
     prices.py
     test_prices.py
     fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
     Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
-    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-> Not a git repo. Let's look at the tests first.
+    # Memory
+    - commit messages: write them in lowercase, starting with "fix:"
 $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
   run this? [y/N] y
   └ def total(items, discount=0):
@@ -958,8 +957,8 @@ $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
     if __name__ == "__main__":
         unittest.main()
     /usr/local/bin/python: No module named pytest
-> The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
-$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git -C . rev-parse --show-toplevel 2>&1 | head -1; ls -a
+> Discount is documented as a percentage but subtracted as an absolute amount.
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version
   run this? [y/N] y
   └ test_no_discount (test_prices.TestTotal.test_no_discount) ... ok
     test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok
@@ -968,24 +967,17 @@ $ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - di
     Ran 2 tests in 0.000s
     
     OK
-    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
-    .
-    ..
-    .harness
-    .pytest_cache
-    __pycache__
-    prices.py
-    test_prices.py
-∴ There's no git repo here, and initializing one is an assumption I shouldn't make silently since the real project root might actually be the parent directory instead. I'll ask the user before running git init.
+    git version 2.47.3
+∴ This isn't actually a git repository, so there's nothing to commit to. I could run git init since it's easily reversible, but that assumes something the user didn't ask for—better to just ask them how they'd like to proceed.
   
   
 > I fixed the bug, but I haven't committed because this folder isn't a git repository.
   
-  **Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test `test_ten_percent_off`, treat it as a percentage. With a discount of 10 on a subtotal of 25, it returned 15 instead of 22.5.
+  **Cause:** `total()` in `prices.py` is documented to take a percentage discount, but it subtracted the value as a flat amount. With `discount=10` it took off 10 instead of 10%. That gave 15.0 where the test expects 22.5.
   
-  **Fix:** the return line is now `round(subtotal * (1 - discount / 100), 2)`. Both tests pass when run with `python -m unittest`.
+  **Fix:** the last line of `total()` is now `round(subtotal * (1 - discount / 100), 2)`. Both tests pass when I run `python -m unittest`.
   
-  **Commit:** there's no `.git` here or in any parent folder I can see. Should I run `git init` and make a first commit? If the repo lives somewhere else, tell me where. When I do commit, the message will follow your convention, lowercase and starting with `fix:`, for example `fix: apply discount as a percentage`.
+  **Commit:** there's no `.git` here or in any parent folder. Do you want me to run `git init` and make the first commit? I'd use the message `fix: treat discount as a percentage`, which follows your lowercase "fix:" convention. If the repo is meant to be somewhere else, tell me where.
 <
 ```
 
