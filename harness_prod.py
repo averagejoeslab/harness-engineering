@@ -239,7 +239,7 @@ def compact(messages, drop):                             # current inputs: too l
 def resume():                                            # persistence: carry on a session that ended mid-task
     global EPISODE
     episodes = sorted(glob.glob(".harness/episodes/*.jsonl"))
-    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
+    if not episodes: return []
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
@@ -275,9 +275,8 @@ def capture_approval(question):                          # input: a yes or no fr
 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
     messages = resume()                                  # persistence: an unfinished session comes back first
-    message = "" if messages else " ".join(sys.argv[1:]) or capture_input()
+    message = "" if messages else capture_input()
     start_box()                                          # safety: every command runs in the box
     drop = 0
     if message: add(messages, {"role": "user", "content": message})
@@ -297,7 +296,6 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             add(messages, {"role": "user", "content": results})
             continue
-        if not chat: break                               # stop: a request from the command line is done
         add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()

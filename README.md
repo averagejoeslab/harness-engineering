@@ -287,9 +287,7 @@ In [`4_control_flow.py`](./4_control_flow.py), `control_flow()` is added:
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    message = " ".join(sys.argv[1:]) or capture_input()
-    messages = [{"role": "user", "content": message}]
+    messages = [{"role": "user", "content": capture_input()}]
     while True:
         output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
@@ -297,19 +295,19 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             messages.append({"role": "user", "content": results})
             continue
-        if not chat: break                               # stop: a request from the command line is done
         messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()
 ```
 
-A request can also come from the command line. Then it runs once and stops, so a script can run it with no one there. This time we pass the task that way:
+We run it and type the task:
 
 ```bash
-uv run ../4_control_flow.py "The tests are failing. Find out why and fix it."
+uv run ../4_control_flow.py
 ```
 
 ```
+< The tests are failing. Find out why and fix it.
 $ pwd; ls; git status --short | head
   └ ...
 $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
@@ -329,10 +327,11 @@ The task is done. **This is an agent:** it keeps going until the task is finishe
 But it doesn't know what it is, what its body is, or how best to use it. Ask, and it has to go looking:
 
 ```bash
-uv run ../4_control_flow.py "Who are you, and where are you working?"
+uv run ../4_control_flow.py
 ```
 
 ```
+< Who are you, and where are you working?
 > I'll check the environment so I can answer accurately.
 $ pwd
   └ ...
@@ -462,7 +461,7 @@ def assemble_context(messages):                          # context: assembles wh
 And `control_flow()` sends what it assembles, calling `compact()` when a request is too long:
 
 ```python
-    messages, drop = [{"role": "user", "content": message}], 0   # current inputs: the conversation so far
+    messages, drop = [{"role": "user", "content": capture_input()}], 0   # current inputs: the conversation so far
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
@@ -476,10 +475,11 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
 Now ask it who it is:
 
 ```bash
-uv run ../harness.py "Who are you, and where are you working?"
+uv run ../harness.py
 ```
 
 ```
+< Who are you, and where are you working?
 > I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only tool is a bash shell. I use it to work with files, run programs, and reach the network, and I read back its output to check that each step worked.
 
   I'm working on a Linux machine (kernel 6.18.44, x86_64). My working directory is `/tmp/shop`, and today's date is 2026-10-12. I haven't run anything in the shell yet, so this comes from my setup description and not from a live check.
@@ -532,6 +532,18 @@ def count_works():
 def read(name):
     return open(name).read() if os.path.exists(name) else ""
 
+def run(harness, request):                               # types the request, says yes to every approval, and stops it when it hands back
+    agent = subprocess.Popen(["uv", "run", "-q", harness], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    agent.stdin.write(request.encode() + b"\n"); agent.stdin.flush()
+    said = b""
+    while char := agent.stdout.read(1):
+        said += char
+        if said.endswith(b"[y/N] "): agent.stdin.write(b"y\n"); agent.stdin.flush()
+        if said.endswith(b"\n< "): break                # it handed back: the task is done
+    agent.stdin.close(); agent.wait()                    # nothing more is typed, so it stops
+    return said.decode(errors="replace")
+
 tasks = [                                                # the request, and how to tell it was done right
     ("The tests are failing. Find out why and fix it.",
      lambda said: sh("python3 -m unittest -q").returncode == 0 and sh("git diff --quiet HEAD -- test_prices.py").returncode == 0),
@@ -551,8 +563,7 @@ for request, done_right in tasks:
     for f in os.listdir(os.path.join(here, "shop")):
         if f.endswith(".py"): shutil.copy(os.path.join(here, "shop", f), f)
     sh("git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start")
-    said = subprocess.run(["uv", "run", "-q", os.path.join(here, harness), request], input="y\n" * 50,
-                          capture_output=True, text=True).stdout
+    said = run(os.path.join(here, harness), request)
     ok = done_right(said)
     passed += ok
     print(("PASS  " if ok else "FAIL  ") + request, flush=True)
@@ -763,10 +774,11 @@ Summaries now lose nothing: the diary has every message, and the summary says wh
 Tell it something once:
 
 ```bash
-uv run ../harness_prod.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
+uv run ../harness_prod.py
 ```
 
 ```
+< From now on, write commit messages in lowercase, starting with "fix:". Remember that.
 $ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
 - commit messages: write in lowercase, starting with "fix:"
 EOF
@@ -780,10 +792,11 @@ cat .harness/memory/memory.md
 In a new session, give it the task and ask it to commit:
 
 ```bash
-uv run ../harness_prod.py "The tests are failing. Find out why, fix it, and commit."
+uv run ../harness_prod.py
 ```
 
 ```
+< The tests are failing. Find out why, fix it, and commit.
 $ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
   run this? [y/N] y
   └ # Memory
@@ -803,10 +816,11 @@ $ cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subt
 Ask about the past:
 
 ```bash
-uv run ../harness_prod.py "What have we done in this folder before?"
+uv run ../harness_prod.py
 ```
 
 ```
+< What have we done in this folder before?
 $ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T01-32-36 | cut -c1-250
   run this? [y/N] y
   └ ...
@@ -832,7 +846,7 @@ That leaves the task in progress. When the harness starts, **control flow** chec
 def resume():                                            # persistence: carry on a session that ended mid-task
     global EPISODE
     episodes = sorted(glob.glob(".harness/episodes/*.jsonl"))
-    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
+    if not episodes: return []
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
@@ -921,10 +935,11 @@ MACHINE = "Linux, in a container with no network and no desktop"   # safety: the
 Ask it to delete the test. Say yes to its first command, and no to the next:
 
 ```bash
-uv run ../harness_prod.py "Delete test_prices.py, it keeps failing."
+uv run ../harness_prod.py
 ```
 
 ```
+< Delete test_prices.py, it keeps failing.
 $ cd /tmp/shop && find . -name 'test_prices.py' -not -path './.harness/*'; git status --short 2>/dev/null | head
   run this? [y/N] y
   └ ./test_prices.py
@@ -1000,10 +1015,11 @@ def run(cmd, yes):                                       # output: runs one comm
 Ask for a command that takes longer:
 
 ```bash
-uv run ../harness_prod.py "Run sleep 100 as a single command, then tell me it finished."
+uv run ../harness_prod.py
 ```
 
 ```
+< Run sleep 100 as a single command, then tell me it finished.
 > I'll run it as asked. Commands here are stopped after 60 seconds, so it may not get through all 100.
 $ sleep 100
   run this? [y/N] y
@@ -1052,10 +1068,11 @@ The model can also ask for several commands at once, when none needs another's r
 Ask for three commands that each take five seconds:
 
 ```bash
-uv run ../harness_prod.py "Run these three independent commands in parallel, as three separate tool calls in one response: sleep 5; echo a — sleep 5; echo b — sleep 5; echo c. Then tell me how long it took."
+uv run ../harness_prod.py
 ```
 
 ```
+< Run these three independent commands in parallel, as three separate tool calls in one response: sleep 5; echo a — sleep 5; echo b — sleep 5; echo c. Then tell me how long it took.
 $ date +%s.%N; sleep 5; echo a; date +%s.%N
   run this? [y/N] y
 $ date +%s.%N; sleep 5; echo b; date +%s.%N
@@ -1099,11 +1116,7 @@ PASS  Which operating system is this computer running? Write just its name into 
 5/5 passed
 ```
 
-It runs with no one there: **input** takes the request from the command line, **control flow** runs it once and stops, and the evaluation answers yes to every approval, so the box is what keeps it safe. A request from the command line never carries on an old session, so every task starts fresh:
-
-```python
-    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
-```
+It runs with no one there: `tasks.py` types each request, answers yes to every approval, and stops the harness when it hands back. So the box is what keeps it safe. Each task runs in a fresh folder, with no diary to carry on from.
 
 Run it after every change.
 

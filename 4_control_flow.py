@@ -1,7 +1,7 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import subprocess, sys
+import subprocess
 from anthropic import Anthropic
 
 # ── model interface ─────────────────────────────────────────────────────────
@@ -39,9 +39,7 @@ def capture_input():                                     # input: captures what 
 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    message = " ".join(sys.argv[1:]) or capture_input()
-    messages = [{"role": "user", "content": message}]
+    messages = [{"role": "user", "content": capture_input()}]
     while True:
         output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
@@ -49,7 +47,6 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             messages.append({"role": "user", "content": results})
             continue
-        if not chat: break                               # stop: a request from the command line is done
         messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()

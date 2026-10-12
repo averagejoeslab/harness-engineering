@@ -24,6 +24,18 @@ def count_works():
 def read(name):
     return open(name).read() if os.path.exists(name) else ""
 
+def run(harness, request):                               # types the request, says yes to every approval, and stops it when it hands back
+    agent = subprocess.Popen(["uv", "run", "-q", harness], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    agent.stdin.write(request.encode() + b"\n"); agent.stdin.flush()
+    said = b""
+    while char := agent.stdout.read(1):
+        said += char
+        if said.endswith(b"[y/N] "): agent.stdin.write(b"y\n"); agent.stdin.flush()
+        if said.endswith(b"\n< "): break                # it handed back: the task is done
+    agent.stdin.close(); agent.wait()                    # nothing more is typed, so it stops
+    return said.decode(errors="replace")
+
 tasks = [                                                # the request, and how to tell it was done right
     ("The tests are failing. Find out why and fix it.",
      lambda said: sh("python3 -m unittest -q").returncode == 0 and sh("git diff --quiet HEAD -- test_prices.py").returncode == 0),
@@ -43,8 +55,7 @@ for request, done_right in tasks:
     for f in os.listdir(os.path.join(here, "shop")):
         if f.endswith(".py"): shutil.copy(os.path.join(here, "shop", f), f)
     sh("git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start")
-    said = subprocess.run(["uv", "run", "-q", os.path.join(here, harness), request], input="y\n" * 50,
-                          capture_output=True, text=True).stdout
+    said = run(os.path.join(here, harness), request)
     ok = done_right(said)
     passed += ok
     print(("PASS  " if ok else "FAIL  ") + request, flush=True)
