@@ -16,8 +16,8 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 SHELL = "sh"                                             # safety: the shell inside the box
 tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after <, shown as they're written
-    if event.type == "content_block_start" and event.content_block.type == "text": print("< ", end="")
+def show(event):                                         # output: the model's words, after >, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
     if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
@@ -258,7 +258,7 @@ def start_box():                                         # safety: a container t
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input():                                     # input: captures what a person types
     line = ""
-    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
 def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)

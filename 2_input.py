@@ -14,7 +14,7 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input():                                     # input: captures what a person types
     line = ""
-    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
 input = capture_input()                                  # input: what a person types while it runs
 

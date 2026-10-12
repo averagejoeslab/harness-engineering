@@ -16,8 +16,8 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after <, shown as they're written
-    if event.type == "content_block_start" and event.content_block.type == "text": print("< ", end="")
+def show(event):                                         # output: the model's words, after >, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
     if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
@@ -95,7 +95,7 @@ def compact(messages, drop):                             # current inputs: too l
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input():                                     # input: captures what a person types
     line = ""
-    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
 
 # ── control flow ────────────────────────────────────────────────────────────
