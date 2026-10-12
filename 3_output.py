@@ -37,7 +37,7 @@ def capture_input(prompt="> "):                          # input: captures what 
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
+input = capture_input()                                  # input: what a person types while it runs
 if input == "/q": sys.exit()
 
 output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content

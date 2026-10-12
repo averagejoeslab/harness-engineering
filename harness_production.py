@@ -262,13 +262,13 @@ def capture_input(prompt="> "):                          # input: captures what 
 def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
-messages = resume()                                      # persistence: an unfinished session comes back first
-input = "" if messages else " ".join(sys.argv[1:]) or capture_input()   # input: from the command line, or from a person
-if input == "/q": sys.exit()
 
 # ── control flow ────────────────────────────────────────────────────────────
-def control_flow(messages, input):                       # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2
+def control_flow():                                      # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
+    messages = resume()                                  # persistence: an unfinished session comes back first
+    input = "" if messages else " ".join(sys.argv[1:]) or capture_input()
+    if input == "/q": return
     start_box()                                          # safety: every command runs in the box
     drop = 0
     if input: add(messages, {"role": "user", "content": input})
@@ -292,4 +292,4 @@ def control_flow(messages, input):                       # control flow: defines
             break                                        # stop: a request from the command line is done, or /q
         add(messages, {"role": "user", "content": input})   # hand back: the person's next message
 
-control_flow(messages, input)
+control_flow()

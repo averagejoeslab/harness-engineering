@@ -17,8 +17,8 @@ run() {                                                  # run <name> <file> [re
 ASK="The tests are failing. Find out why and fix it."
 # building it, one part at a time
 fresh; run 1_model_interface 1_model_interface.py
-fresh; run 2_input 2_input.py "$ASK"
-fresh; run 3_output 3_output.py "$ASK"
+fresh; ANSWERS="$ASK\n" run 2_input 2_input.py
+fresh; ANSWERS="$ASK\n" run 3_output 3_output.py
 fresh; run 4_control_flow 4_control_flow.py "$ASK"
 fresh; run 4_who 4_control_flow.py "Who are you, and where are you working?"
 fresh; run 5_who harness.py "Who are you, and where are you working?"

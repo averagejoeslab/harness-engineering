@@ -12,9 +12,6 @@ def request_response(each=lambda event: None, **request):   # model interface: r
         for event in stream: each(event)
         return stream.get_final_message()
 
-# ── output: the one tool ────────────────────────────────────────────────────
-tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
-
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input(prompt="> "):                          # input: captures what a person types
     while True:
@@ -23,8 +20,8 @@ def capture_input(prompt="> "):                          # input: captures what 
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
+input = capture_input()                                  # input: what a person types while it runs
 if input == "/q": sys.exit()
 
-output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
