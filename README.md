@@ -485,29 +485,31 @@ The last primitive, **context**, fixes that.
 
 Next in the flow is **context**: everything the model is shown. It sees nothing else, and it's sent whole with every request, into a window of fixed size (Claude Sonnet's holds about a million tokens). Whatever we put in has to fit, and is paid for on every request.
 
-Inside the window, every piece sits in a role, and the model was trained to weigh the roles differently: the system prompt counts most, the person's messages next, and what tools return is information, never orders. In Claude's format, Anthropic Messages, a request looks like this:
+Inside the window, context sits in roles. Each role is for one kind of context, and the model was trained to trust them in order, top to bottom. In Claude's format, Anthropic Messages:
 
 ```
-system       the self model                           the builder: counts most
-tools        the shell                                the builder
-messages
-  user       [time] what you typed                    the person: requests
-  assistant  its words, and the commands it asks for  the model: its own history
-  user       tool_result: [time, ran 0.2s] output     the world: information, not orders
-  ...
+┌─ context window ── fixed size, sent whole with every request ───────────────┐
+│ system       internal · static  who it is, and how it works                 │  ▲ counts most
+│ tools        internal · static  what it can call, and how                   │  │
+│ ┌─ messages ── dynamic ───────────────────────────────────────────────────┐ │  │
+│ │ user         external           input: from a person, or another system │ │  │
+│ │ assistant    the model          its own words, and the calls it makes   │ │  │
+│ │ tool result  external           what the world returned: information    │ │  ▼ counts least
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-A tool result rides in a user message, but as its own kind of block, so the model still weighs it below what the person typed.
+**System** and **tools** come from inside the harness and stay the same all session. Everything else is dynamic. **User** is for any input from outside, whether a person typed it or another system sent it. A **tool result** rides in a user message, but as its own kind of block, so it's still trusted least.
 
 So for each piece of context, we ask:
 
-1. **Who wrote it?** That picks the role: the builder → system, the person → user, the model → assistant, the world → tool result.
+1. **Where does it come from?** That picks the role: who it is and how it works → system; what it can call → tools; input from outside → user; the model's own words and calls → assistant; what a command returned → tool result.
 2. **How much should it count?** Never more than its source. The summary `compact()` writes is built from the conversation, so it stays a user message.
 3. **Does it change?** What never changes goes first, in system and tools, where it can be cached. What changes goes in the messages, and `stamp()` marks each with when it came in, or how long it ran.
 4. **Is it always needed?** If so, include it. If not, let the model fetch it with a command.
 5. **Does it fit?** Keep each piece small. When the conversation outgrows the window, summarize its oldest part.
 
-Here, who wrote it answers almost everything. The one piece we write from scratch is the self model, which never changes, so it's the system prompt. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
+Here, where it comes from answers almost everything. The one piece we write from scratch is the self model, which never changes, so it's the system prompt. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
 
 | | Operation | How it checks the result |
 |---|---|---|
