@@ -447,14 +447,24 @@ uv run ../4_control_flow.py
 
 ```
 < Who are you, and where are you working?
-> I'll check the environment so I can answer accurately.
+> I'll check the environment first so I can answer the second part.
 $ pwd
-  └ ...
-> I'm an AI assistant. I can run shell commands, and I'm using that here to work on tasks for you.
-  ...
+  └ /home/user/harness-engineering/shop
+$ whoami
+  └ root
+$ hostname
+  └ vm
+$ uname -a
+  └ Linux vm 6.18.44-fc-v114 #1 SMP PREEMPT_DYNAMIC @0 x86_64 x86_64 x86_64 GNU/Linux
+> I'm an AI assistant. I can run shell commands on your behalf, and I just used that to look at the environment.
+  
+  - **Working directory:** `/home/user/harness-engineering/shop`
+  - **User:** `root`
+  - **Host:** a Linux machine named `vm`, running kernel 6.18.44-fc-v114 on x86_64
+  
+  The directory name suggests a project called "shop" inside a "harness-engineering" folder. I haven't looked at the contents yet. I can list the files or read the README if you want to know what the project is.
+< 
 ```
-
-(shortened)
 
 The last primitive, **context**, fixes that.
 
