@@ -29,12 +29,13 @@ def nested(result):                                      # output: what a comman
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
 def run(cmd, yes):                                       # output: runs one command, if the person said yes
-    if not yes: return "[refused: the person said no]", "refused"
+    if not yes: return "[refused: the person said no]", "refused", None
+    start = datetime.datetime.now()
     done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     result = done.stdout or f"(exit {done.returncode})"
     if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
-    return result, done.returncode
+    return result, done.returncode, start
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     calls = [block for block in output if block.type == "tool_use"]
@@ -45,16 +46,22 @@ def handle_output(output):                               # output: handles the m
     with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
         done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block, (result, exit) in zip(calls, done):
+    for block, (result, exit, start) in zip(calls, done):
         record(cmd=block.input["cmd"], exit=exit)       # observability
         if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
         print(nested(result))
-        results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
     return results
 
 # ── context ─────────────────────────────────────────────────────────────────
+BORN = datetime.datetime.now()                           # self model: when this session began
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
-EPISODE = f".harness/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session's diary
+EPISODE = f".harness/episodes/{BORN:%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session's diary
+
+def stamp(text, start=None):                             # current inputs: when it came in, and how long it ran if it ran
+    now = datetime.datetime.now()
+    ran = f", ran {(now - start).total_seconds():.1f}s" if start else ""
+    return f"[{now:%Y-%m-%d %H:%M:%S}{ran}] {text}"
 
 def remember(message):                                   # persistence: the diary, every message as it was
     os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
@@ -62,15 +69,6 @@ def remember(message):                                   # persistence: the diar
 
 def add(messages, message):                              # persistence: one message, two places: the conversation and the diary
     messages.append(message); remember(message)
-
-def skills():                                            # persistence: an index of how-tos, built from each one's header
-    index = []
-    for path in sorted(glob.glob(".harness/skills/*.md")):
-        text = open(path).read()
-        name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
-        index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
-    return "\n".join(index) or "- (none yet)"
-
 
 def mechanics():                                         # self model: this file, with the self model left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
@@ -83,8 +81,8 @@ def system():                                            # self model: mind and 
 **Identity:** You are an agent, working for the person who messages you.
 **Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
 **Loop:** observe → think → act → repeat.
-**When:** {datetime.date.today()}
-**Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands.
+**Born:** {BORN:%Y-%m-%d %H:%M:%S}. Each message you get is stamped with when it came in, and each command's result with how long it ran.
+**Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands. Nothing is loaded for you: retrieve what you need before you rely on it.
 **Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
 
 ## Body
@@ -170,9 +168,6 @@ Worth writing (your discretion): a multi-step way of doing something that worked
 
 Generalize: a skill is the method behind a task that worked, not a replay of it. Replace this task's particulars (file names, values, paths) with <placeholders> or with how to find them, and name and describe it for the whole class of tasks it serves, so it fits this case and wider ones: `run-python-tests` ("run and fix a Python project's tests"), not `fix-calc-add`.
 
-Index (built from every skill's header, current as of this call):
-{skills()}
-
 Read moves:
 - read one before a task it covers: `cat .harness/skills/<name>.md`
 - filter by content: `grep -il "topic" .harness/skills/*.md`
@@ -186,7 +181,7 @@ Rules: one skill per file; if a skill turns out wrong or a request changes it, r
 **Store:** `.harness/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
 
 Format (written by the harness; one line per message, exactly as it was in working memory):
-{{"role": "user", "content": "<the input that opened the session>"}}   ← always the first line
+{{"role": "user", "content": "[<when it came in>] <the input that opened the session>"}}   ← always the first line
 {{"role": "assistant", "content": [{{"type": "tool_use", "input": {{"cmd": "<command>"}}, ...}}]}}
 {{"role": "user", "content": [{{"type": "tool_result", "content": "<what it printed>", ...}}]}}
 {{"role": "assistant", "content": [{{"type": "text", "text": "<your answer>"}}]}}
@@ -243,7 +238,7 @@ def resume():                                            # persistence: carry on
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
+    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:72]!r}? [y/N] "): return []
     EPISODE = episodes[-1]                               # carry on in the same file
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(messages, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
@@ -280,7 +275,7 @@ def control_flow():                                      # control flow: defines
     message = "" if messages else capture_input()
     start_box()                                          # safety: every command runs in the box
     drop = 0
-    if message: add(messages, {"role": "user", "content": message})
+    if message: add(messages, {"role": "user", "content": stamp(message)})
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
@@ -298,6 +293,6 @@ def control_flow():                                      # control flow: defines
             add(messages, {"role": "user", "content": results})
             continue
         if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
+        add(messages, {"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
 
 control_flow()

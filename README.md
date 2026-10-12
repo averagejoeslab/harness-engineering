@@ -284,19 +284,20 @@ def nested(result):                                      # output: what a comman
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    calls = [block for block in output if block.type == "tool_use"]
+    approved = []
+    for block in calls:
+        print(f"$ {block.input['cmd']}")
+        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
+    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
+        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block in output:
-        if block.type == "text": show(block.text)
-        if block.type == "tool_use":
-            print(f"$ {block.input['cmd']}")
-            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-            result = done.stdout or f"(exit {done.returncode})"
-            print(nested(result))
-            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+    for block, (result, exit, start) in zip(calls, done):
+        record(cmd=block.input["cmd"], exit=exit)       # observability
+        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
+        print(nested(result))
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
     return results
-
-output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": message}]).content
-results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
 We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `└` is what that command printed:
@@ -339,18 +340,29 @@ In [`4_control_flow.py`](./4_control_flow.py), `control_flow()` is added:
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    messages = [{"role": "user", "content": capture_input()}]
+    messages = resume()                                  # persistence: an unfinished session comes back first
+    message = "" if messages else capture_input()
+    start_box()                                          # safety: every command runs in the box
+    drop = 0
+    if message: add(messages, {"role": "user", "content": stamp(message)})
     while True:
-        output = request_response(max_tokens=16384, tools=tools, messages=messages).content
-        messages.append({"role": "assistant", "content": output})
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
+            output = response.content
+            record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
+                   cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+        add(messages, {"role": "assistant", "content": output})   # persistence: on disk before any command runs
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
-            messages.append({"role": "user", "content": results})
+            add(messages, {"role": "user", "content": results})
             continue
         if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
-
-control_flow()
+        add(messages, {"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
 ```
 
 We run it and type the task:
@@ -471,10 +483,17 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Next in the flow is **context**, which assembles what the model is shown with each request. It has two parts:
+Next in the flow is **context**: everything the model is shown with each request. It can only arrive in a few places, and the model was trained to weigh each one differently. It follows the system prompt first, acts on the person's messages, and treats what tools return as information, not orders. So each piece goes where its source, and how often it changes, put it:
 
-- **Self model**, sent as the system prompt. Its **mind**: who it is, the model it thinks with, its loop, the date, and how carefully to change things. Its **body**: the computer and its shell, where it's working, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
-- **Current inputs**, sent as the messages: what you typed, each command the model asked for, and what it printed. When they outgrow what the model can read, the older part is summarized.
+| Where | Who writes it | Changes | What goes there |
+|---|---|---|---|
+| System prompt | the builder | never: it's set when the session is born | the self model: its mind and its body |
+| Tools | the builder | never | the shell, named for this computer |
+| User messages | the person | every turn | what you type, stamped with when it came in |
+| Assistant messages | the model | every turn | what it said, and the commands it asked for |
+| Tool results | the world | every command | what each command printed, stamped with how long it ran |
+
+The self model is the one piece we write from scratch. Its **mind**: who it is, the model it thinks with, its loop, when it was born, and how carefully to change things. Its **body**: the computer and its shell, where it's working, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -484,6 +503,8 @@ Next in the flow is **context**, which assembles what the model is shown with ea
 | 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
 The shop task only needs the first.
+
+Everything else changes as the session goes, so it goes in the messages. `stamp()` grounds each one in time: what you type gets when it came in, and what a command printed gets how long it ran. When the messages outgrow what the model can read, the older part is summarized. The summary goes in as a user message: it's built from the conversation, so it shouldn't count for more than the conversation did.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -498,11 +519,17 @@ The shop task only needs the first.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`harness.py`](./harness.py), `system()`, `assemble_context()` and `compact()` are added:
+In [`harness.py`](./harness.py), `stamp()`, `system()`, `assemble_context()` and `compact()` are added:
 
 ````python
 # ── context ─────────────────────────────────────────────────────────────────
+BORN = datetime.datetime.now()                           # self model: when this session began
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
+
+def stamp(text, start=None):                             # current inputs: when it came in, and how long it ran if it ran
+    now = datetime.datetime.now()
+    ran = f", ran {(now - start).total_seconds():.1f}s" if start else ""
+    return f"[{now:%Y-%m-%d %H:%M:%S}{ran}] {text}"
 
 def mechanics():                                         # self model: this file, with the self model left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
@@ -515,7 +542,7 @@ def system():                                            # self model: mind and 
 **Identity:** You are an agent, working for the person who messages you.
 **Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized.
 **Loop:** observe → think → act → repeat.
-**When:** {datetime.date.today()}
+**Born:** {BORN:%Y-%m-%d %H:%M:%S}. Each message you get is stamped with when it came in, and each command's result with how long it ran.
 **Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
 
 ## Body
@@ -559,33 +586,27 @@ def compact(messages, drop):                             # current inputs: too l
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ````
 
-Output and control flow change to use it. Output names the computer's own shell in the tool and runs every command with it. Control flow sends what context assembles, and calls `compact()` when a request is too long:
+Output and control flow change to use it. Output names the computer's own shell in the tool, runs every command with it, and stamps what it printed with how long it ran. Control flow stamps what you type, sends what context assembles, and calls `compact()` when a request is too long:
 
 ```python
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
-            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
 
-# ── control flow ────────────────────────────────────────────────────────────
-def control_flow():                                      # control flow: defines the shape of the loop
-    messages, drop = [{"role": "user", "content": capture_input()}], 0   # current inputs: the conversation so far
-    while True:
-        try:
-            if drop: messages, drop = compact(messages, drop), 0
-            output = request_response(max_tokens=16384, **assemble_context(messages)).content
-        except BadRequestError as e:                     # too long to send: summarize on the next pass
-            if "prompt is too long" not in str(e): raise
-            drop += 1
-            continue
-        messages.append({"role": "assistant", "content": output})
-        results = handle_output(output)
-        if results:                                      # a command ran: send back what it printed, and go again
-            messages.append({"role": "user", "content": results})
-            continue
-        if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
-
-control_flow()
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    calls = [block for block in output if block.type == "tool_use"]
+    approved = []
+    for block in calls:
+        print(f"$ {block.input['cmd']}")
+        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
+    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
+        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
+    results = []
+    for block, (result, exit, start) in zip(calls, done):
+        record(cmd=block.input["cmd"], exit=exit)       # observability
+        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
+        print(nested(result))
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
+    return results
 ```
 
 We run it and ask who it is:
@@ -736,7 +757,7 @@ When a session ends, everything in it is gone: what you told it, what it worked 
 **Control flow** writes every message to the diary as it happens:
 
 ```python
-EPISODE = f".harness/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session's diary
+EPISODE = f".harness/episodes/{BORN:%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session's diary
 
 def remember(message):                                   # persistence: the diary, every message as it was
     os.makedirs(os.path.dirname(EPISODE), exist_ok=True)
@@ -752,20 +773,10 @@ The model decides what's worth keeping and asks for the command that writes it. 
 
 ```
 **Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
-**Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands.
+**Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands. Nothing is loaded for you: retrieve what you need before you rely on it.
 ```
 
-The body gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. The harness lists the how-tos on every request, so the model knows what it can already do:
-
-```python
-def skills():                                            # persistence: an index of how-tos, built from each one's header
-    index = []
-    for path in sorted(glob.glob(".harness/skills/*.md")):
-        text = open(path).read()
-        name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
-        index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
-    return "\n".join(index) or "- (none yet)"
-```
+Nothing is loaded for it. Like a person, it has to recall a memory before it can use one, so the body gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. What it reads comes back as tool results: information to weigh, not orders.
 
 <details>
 <summary>What the body gains: memory, in full</summary>
@@ -833,9 +844,6 @@ Worth writing (your discretion): a multi-step way of doing something that worked
 
 Generalize: a skill is the method behind a task that worked, not a replay of it. Replace this task's particulars (file names, values, paths) with <placeholders> or with how to find them, and name and describe it for the whole class of tasks it serves, so it fits this case and wider ones: `run-python-tests` ("run and fix a Python project's tests"), not `fix-calc-add`.
 
-Index (built from every skill's header, current as of this call):
-{skills()}
-
 Read moves:
 - read one before a task it covers: `cat .harness/skills/<name>.md`
 - filter by content: `grep -il "topic" .harness/skills/*.md`
@@ -849,7 +857,7 @@ Rules: one skill per file; if a skill turns out wrong or a request changes it, r
 **Store:** `.harness/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
 
 Format (written by the harness; one line per message, exactly as it was in working memory):
-{{"role": "user", "content": "<the input that opened the session>"}}   ← always the first line
+{{"role": "user", "content": "[<when it came in>] <the input that opened the session>"}}   ← always the first line
 {{"role": "assistant", "content": [{{"type": "tool_use", "input": {{"cmd": "<command>"}}, ...}}]}}
 {{"role": "user", "content": [{{"type": "tool_result", "content": "<what it printed>", ...}}]}}
 {{"role": "assistant", "content": [{{"type": "text", "text": "<your answer>"}}]}}
@@ -1041,7 +1049,7 @@ def resume():                                            # persistence: carry on
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
+    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:72]!r}? [y/N] "): return []
     EPISODE = episodes[-1]                               # carry on in the same file
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(messages, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
@@ -1269,12 +1277,13 @@ And **output** stops a command after a minute:
 
 ```python
 def run(cmd, yes):                                       # output: runs one command, if the person said yes
-    if not yes: return "[refused: the person said no]", "refused"
+    if not yes: return "[refused: the person said no]", "refused", None
+    start = datetime.datetime.now()
     done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     result = done.stdout or f"(exit {done.returncode})"
     if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
-    return result, done.returncode
+    return result, done.returncode, start
 ```
 
 Ask for a command that takes longer:
@@ -1340,11 +1349,11 @@ def handle_output(output):                               # output: handles the m
     with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
         done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block, (result, exit) in zip(calls, done):
+    for block, (result, exit, start) in zip(calls, done):
         record(cmd=block.input["cmd"], exit=exit)       # observability
         if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
         print(nested(result))
-        results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
     return results
 ```
 
@@ -1393,7 +1402,7 @@ def control_flow():                                      # control flow: defines
     message = "" if messages else capture_input()
     start_box()                                          # safety: every command runs in the box
     drop = 0
-    if message: add(messages, {"role": "user", "content": message})
+    if message: add(messages, {"role": "user", "content": stamp(message)})
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
@@ -1411,7 +1420,7 @@ def control_flow():                                      # control flow: defines
             add(messages, {"role": "user", "content": results})
             continue
         if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
+        add(messages, {"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
 ```
 
 ### How do we know it still works?

@@ -26,14 +26,21 @@ def handle_output(output):                               # output: handles the m
         if block.type == "text": show(block.text)
         if block.type == "tool_use":
             print(f"$ {block.input['cmd']}")
+            start = datetime.datetime.now()
             done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
             result = done.stdout or f"(exit {done.returncode})"
             print(nested(result))
-            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": stamp(result, start)})  # input: from the world
     return results
 
 # ── context ─────────────────────────────────────────────────────────────────
+BORN = datetime.datetime.now()                           # self model: when this session began
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
+
+def stamp(text, start=None):                             # current inputs: when it came in, and how long it ran if it ran
+    now = datetime.datetime.now()
+    ran = f", ran {(now - start).total_seconds():.1f}s" if start else ""
+    return f"[{now:%Y-%m-%d %H:%M:%S}{ran}] {text}"
 
 def mechanics():                                         # self model: this file, with the self model left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
@@ -46,7 +53,7 @@ def system():                                            # self model: mind and 
 **Identity:** You are an agent, working for the person who messages you.
 **Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized.
 **Loop:** observe → think → act → repeat.
-**When:** {datetime.date.today()}
+**Born:** {BORN:%Y-%m-%d %H:%M:%S}. Each message you get is stamped with when it came in, and each command's result with how long it ran.
 **Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
 
 ## Body
@@ -98,7 +105,7 @@ def capture_input():                                     # input: a one-off requ
 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
-    messages, drop = [{"role": "user", "content": capture_input()}], 0   # current inputs: the conversation so far
+    messages, drop = [{"role": "user", "content": stamp(capture_input())}], 0   # current inputs: the conversation so far
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
@@ -113,6 +120,6 @@ def control_flow():                                      # control flow: defines
             messages.append({"role": "user", "content": results})
             continue
         if len(sys.argv) > 1: break                      # stop: a one-off request is done
-        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
+        messages.append({"role": "user", "content": stamp(capture_input())})   # hand back: the person's next message
 
 control_flow()
