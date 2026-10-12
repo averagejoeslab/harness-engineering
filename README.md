@@ -70,13 +70,17 @@ Building a harness starts with what you want the agent to do. Pick a model for t
 
 We'll use Claude Sonnet through Anthropic's Python SDK, in the Anthropic Messages format. You can do the same, use another provider that supports Anthropic Messages, or use a different format by changing the model interface. Claude has broad knowledge, deep expertise in areas like coding and math, and follows instructions well through long, complex tasks. That fits our agent: one that works on a computer like a person, but does everything through the shell, on my wager that through the shell all things are possible.
 
-We aren't building the model, only its body: one primitive at a time, with every version given the same job, to see how far it gets and what stops it. **The job:** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` should take a percentage discount off a basket, and its test fails. The request is always:
+We aren't building the model, only its body. We'll build it one primitive at a time, giving every version the same job to see how far it gets and what stops it.
+
+**The job:** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` should take a percentage discount off a basket, and its test fails. The request is always:
 
 > The tests are failing. Find out why and fix it.
 
+We'll build outward from the model: first reach it, then let someone ask it something, let it act, let it keep going, and finally tell it what it is.
+
 ### 1. Reach the model
 
-We have a model and no way to reach it. So the first primitive is the **model interface**:
+All we have is a model, and nothing around it. Before anything else, the harness needs a way to reach it: the **model interface**.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
