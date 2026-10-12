@@ -95,30 +95,32 @@ We have a model, and no way to talk to it. So the first primitive is the **model
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def call(each=lambda event: None, **request):            # model interface: the response streams back, and each piece goes to each()
+def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
     with client.messages.stream(model=MODEL, **request) as stream:
         for event in stream: each(event)
         return stream.get_final_message()
 
-output = call(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
 print(output.model_dump_json(indent=2))
 ```
 
-`call()` is the whole model interface. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
+`request_response()` is the whole model interface: it requests a response from the model. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
+
+In the runs below, the first `$` line is how it was started. After that, a `$` line is a command the agent ran, followed by what it printed.
 
 ```
 $ uv run 1_model_interface.py
 {
   "content": [
     {
-      "text": "I can't see your code or test output in this conversation, so I can't tell yet why the tests are failing. To track it down, I need a few things: ...",
+      "text": "I don't have access to your code, test files, or test output in this conversation, so I can't yet tell why the tests are failing. Could you share: ...",
       "type": "text"
     }
   ],
   "stop_reason": "end_turn",
   "usage": {
     "input_tokens": 24,
-    "output_tokens": 449,
+    "output_tokens": 313,
     ...
   }
 }
@@ -147,24 +149,26 @@ So we add **input**: read what you type, or what you put on the command line, an
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
-def read(prompt):                                        # input: from a person
+def capture_input(prompt="> "):                          # input: captures what a person types
     while True:
         print(prompt, end="", flush=True)
         line = sys.stdin.readline()
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or read("> ")
+input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
 if input == "/q": sys.exit()
 
-output = call(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
 ```
 
-We also include a description of one tool, `bash`, in what the model is shown, so it knows it can ask to run a command:
+`capture_input()` captures what a person types. The request can also come straight from the command line.
+
+We also include a description of one tool, `shell`, in what the model is shown, so it knows it can ask to run a command:
 
 ```python
-tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
 ```
@@ -172,14 +176,10 @@ $ uv run 2_input.py "The tests are failing. Find out why and fix it."
 {
   "content": [
     {
-      "text": "Let me start by looking at the project and running the tests.",
-      "type": "text"
-    },
-    {
       "input": {
-        "cmd": "pwd; ls -la; git status 2>/dev/null | head -20"
+        "cmd": "pwd; ls; git status --short | head"
       },
-      "name": "bash",
+      "name": "shell",
       "type": "tool_use"
     }
   ],
@@ -213,26 +213,33 @@ So we add **output**: show its words as they arrive, and run the commands it ask
 def show(event):                                         # output: text, shown as it's written
     if event.type == "text": print(event.text, end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
+
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    results = []
+    for block in output:
+        if block.type == "tool_use":
+            print(f"$ {block.input['cmd']}")
+            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            print(done.stdout)
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
+    return results
 ```
 
 ```python
-input = []
-for block in output:                                     # output: run tool requests
-    if block.type == "tool_use":
-        print(f"$ {block.input['cmd']}")
-        done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-        print(done.stdout)
-        input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
+output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-What a command prints comes back as input, this time from the world, not from you.
+`handle_output()` handles the model's outputs: `show()` prints its words as they stream in, and each command it asks for is run. What a command prints comes back as input, this time from the world, not from you.
 
 ```
 $ uv run 3_output.py "The tests are failing. Find out why and fix it."
-$ pwd; ls; git status --short | head
+$ pwd; ls; git status 2>&1 | head
 /tmp/shop
 prices.py
 test_prices.py
+On branch master
+nothing to commit, working tree clean
 ```
 
 It acted. But what the command printed never reaches the model, so it can't take the next step.
@@ -256,45 +263,40 @@ So we add **control flow**: when a command ran, send what it printed back to the
 
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
-messages = [{"role": "user", "content": input}]
+def control_flow(input):                                 # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2
+    messages = [{"role": "user", "content": input}]
+    while True:
+        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
+        messages.append({"role": "assistant", "content": output})
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            messages.append({"role": "user", "content": results})
+            continue
+        if not chat or (input := capture_input("\n> ")) == "/q":
+            break                                        # stop: a request from the command line is done, or /q
+        messages.append({"role": "user", "content": input})   # hand back: the person's next message
 
-while True:
-    output = call(show, max_tokens=16384, tools=tools, messages=messages).content
-    messages.append({"role": "assistant", "content": output})
-
-    input = []
-    for block in output:                                 # output: run tool requests
-        if block.type == "tool_use":
-            print(f"$ {block.input['cmd']}")
-            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-            print(done.stdout)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
-
-    if input:
-        messages.append({"role": "user", "content": input})
-        continue
-    if not chat or (input := read("\n> ")) == "/q":
-        break
-    messages.append({"role": "user", "content": input})
+control_flow(input)
 ```
+
+`control_flow()` defines the shape of the loop: go again while commands run, hand back to you when the model is done, and stop on `/q` or when a request from the command line is finished.
 
 ```
 $ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
-$ pwd; ls -la; git status 2>/dev/null | head -20
+$ pwd; ls; git status 2>/dev/null | head
 ...
 $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
 ...
-$ python -m unittest -v 2>&1 | tail -20; git log --oneline | head
-...
 AssertionError: 15 != 22.5
 ...
-$ sed -i 's|return round(subtotal - discount, 2)|return round(subtotal * (1 - discount / 100), 2)|' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
+$ sed -i 's/subtotal - discount/subtotal * (1 - discount \/ 100)/' prices.py; python -m unittest -v 2>&1 | tail
 ...
 OK
 
-**Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, even though its docstring and the test treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 25 − 10 = 15. The test expected 22.5, which is 10% off.
+The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test `discount=10` expecting 22.5, both treat it as a percentage. With a subtotal of 25, the old code returned 15 instead of 22.5.
 
-**Fix:** I changed the last line of `total()` to `round(subtotal * (1 - discount / 100), 2)`.
+I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests now pass. ...
 ```
 
 (shortened)
@@ -305,16 +307,13 @@ But it doesn't know what it is, what its body is, or how best to use it. Ask it,
 
 ```
 $ uv run 4_control_flow.py "Who are you, and where are you working?"
-I'm an AI assistant with a shell tool. I'll check the environment so I can tell you where I'm working.
-$ pwd
+I'll check the environment so I can answer the second part.
+$ pwd; whoami; hostname; uname -a
 ...
-$ whoami; hostname
-...
-$ uname -a; cat /etc/os-release 2>/dev/null | head -n 3
-...
-I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, and managing a system.
 
-I'm working in this environment:
+I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, or debugging.
+
+Here's the environment I'm working in:
 - **Working directory:** `/tmp/shop`
 ...
 ```
@@ -340,10 +339,10 @@ Context is everything the model is shown with each request. We give it three thi
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool is now named for that shell, and output runs every command with it:
+**A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool's description now names that shell, and output runs every command with it:
 
 ```python
-SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # the shell this computer uses
+SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
@@ -414,6 +413,9 @@ This code is your harness. Its instructions are left out below, because they're 
 ```python
 {mechanics()}
 ```"""}]
+
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages}
 ````
 
 </details>
@@ -425,34 +427,109 @@ def compact(messages, drop):                             # current inputs: too l
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
     if drop > len(turns): sys.exit("[the conversation can't be summarized small enough]")
     keep = messages[turns[drop]:] if drop < len(turns) else [messages[turns[-1]]]
-    summary = call(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
+    summary = request_response(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
     gist = next((b.text for b in summary.content if b.type == "text"), "")
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ```
 
-The loop sends all three with every request, and calls `compact()` when one is rejected as too long:
+`assemble_context()` puts all three together for every request:
 
 ```python
-messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
-
-while True:
-    try:
-        if drop:
-            messages, drop = compact(messages, drop), 0
-        output = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages).content
-    except BadRequestError as e:
-        if "prompt is too long" not in str(e): raise
-        drop += 1
-        continue
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages}
 ```
 
-> **Run, to be recorded:** asked who it is and where it's working, it names its shell and its system, without running a command.
+And `control_flow()` now sends what it assembles, and calls `compact()` when a request is rejected as too long:
+
+```python
+    messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+```
+
+```
+$ uv run harness.py "Who are you, and where are you working?"
+$ pwd; hostname; uname -sr; ls | head -20
+/tmp/shop
+vm
+Linux 6.18.44-fc-v114
+prices.py
+test_prices.py
+
+I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only way to act is a bash shell. With it I can work with files, run and install programs, and reach the network.
+
+I'm working in `/tmp/shop` on a Linux machine called `vm` (kernel 6.18.44). The date is 2026-10-12. The directory has two files: `prices.py` and `test_prices.py`. I haven't opened either yet.
+```
+
+It knows what it is, what its body is and what day it is, because they're in what it's shown. It only ran a command to look at the folder, which no self model can tell it.
 
 That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is and how to use its body, and keeps going however long the session runs.
 
-## Would you leave it alone?
+## Evaluating the Harness
 
-The agent works. But when a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
+It did the job once. Would it do it again, or do a different job? Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a set of tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
+
+| Task | Passes when |
+|---|---|
+| Fix the failing test | the tests pass, and the test file is unchanged |
+| Add a `count()` function | it returns the right numbers |
+| Write the names of the `.py` files into a file | the file lists exactly them |
+| Answer a question without changing anything | nothing changed, and the answer is right |
+| Name the operating system, into a file | the file names it |
+
+[`eval.sh`](./eval.sh) runs them on any harness file, `harness.py` by default:
+
+```sh
+#!/bin/sh
+# Evaluation: tasks with known right answers, each run in a fresh copy of shop/, checked by what the agent did, not what it says.
+# ./eval.sh                          the harness from Building a Harness
+# ./eval.sh harness_production.py    the production harness (needs Docker)
+harness=${1:-harness.py}
+here=$(pwd)
+env=$([ -f "$here/.env" ] && echo --env-file "$here/.env")
+passed=0; total=0
+check() {                                                # $1: the request; $2: true only if it was done right
+  cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
+  said=$(yes | uv run -q $env "$here/$harness" "$1" 2>/dev/null); export said
+  total=$((total + 1))
+  if sh -c "$2" > /dev/null 2>&1; then passed=$((passed + 1)); echo "PASS  $1"; else echo "FAIL  $1"; fi
+  cd "$here"
+}
+unchanged='test -z "$(git status --porcelain | grep -v -e __pycache__ -e .harness)"'
+check "The tests are failing. Find out why and fix it." \
+      'python3 -m unittest -q && git diff --quiet HEAD -- test_prices.py'
+check "Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities." \
+      'python3 -c "from prices import count; assert count([(10, 2), (5, 1)]) == 3 and count([]) == 0"'
+check "Write the names of the .py files in this folder, one per line, sorted, into files.txt." \
+      'printf "prices.py\ntest_prices.py\n" | cmp -s - files.txt'
+check "What does total() return for an empty basket? Don't change anything." \
+      "$unchanged"' && echo "$said" | grep -qw 0'
+check "Which operating system is this computer running? Write just its name into os.txt." \
+      'grep -qi -e "$(uname -s)" -e "$(. /etc/os-release 2>/dev/null; echo "${NAME:-$(uname -s)}")" os.txt'   # the system's name, or its distribution's
+echo "$passed/$total passed"
+```
+
+```
+$ ./eval.sh
+PASS  The tests are failing. Find out why and fix it.
+PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
+PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
+PASS  What does total() return for an empty basket? Don't change anything.
+PASS  Which operating system is this computer running? Write just its name into os.txt.
+5/5 passed
+```
+
+Run it after every change. A task that fails tells you where to look.
+
+## Getting it Ready for Production
+
+The agent works, and passes its evaluation. But would you leave it alone? When a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
 
 Getting it ready to leave alone means asking six questions, of every primitive:
 
@@ -635,15 +712,59 @@ Summaries now lose nothing, because the diary has every message, and the summary
 
 Tell it something once:
 
-> **Run, to be recorded:** the agent saves the commit-message rule to its facts, after you approve the command.
+```
+$ uv run harness_production.py "From now on, write commit messages in lowercase, starting with "fix:". Remember that."
+$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
+- commit messages: write in lowercase, starting with "fix:"
+EOF
+cat .harness/memory/memory.md
+  run this? [y/N] y
+# Memory
+- commit messages: write in lowercase, starting with "fix:"
+
+Noted and saved. From now on, I'll write commit messages in lowercase and start them with "fix:".
+```
 
 In a new session, give it the job and ask it to commit:
 
-> **Run, to be recorded:** a new session checks its facts first, fixes the bug, and commits as "fix: …", each command approved.
+```
+$ uv run harness_production.py "The tests are failing. Find out why, fix it, and commit."
+$ cd /tmp/shop && ls -a && git status --short | head && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+  run this? [y/N] y
+...
+# Memory
+- commit messages: write in lowercase, starting with "fix:"
+...
+The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
+$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest 2>&1 | tail -5 && git add prices.py && git commit -qm "fix: apply discount as a percentage"
+  run this? [y/N] y
+...
+OK
+fe38fcc fix: apply discount as a percentage
+6ce8184 Add prices
+
+... I committed the fix as `fix: apply discount as a percentage`, following your lowercase `fix:` convention for commit messages.
+```
+
+(shortened)
 
 Ask about the past:
 
-> **Run, to be recorded:** asked what's been done in the folder before, it reads its diary and lists the earlier sessions.
+```
+$ uv run harness_production.py "What have we done in this folder before?"
+$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T00-20-43 | cut -c1-250
+  run this? [y/N] y
+...
+.harness/episodes/2026-10-12T00-20-29.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+.harness/episodes/2026-10-12T00-20-34.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+...
+This folder is a small shop project: `prices.py` with its tests in `test_prices.py`. It's a git repo. I found two earlier sessions:
+1. **Commit message rule.** You told me to write commit messages in lowercase, starting with "fix:". I saved that to memory.
+2. **Failing tests.** `total()` in `prices.py` subtracted the discount as a flat amount, but it should be a percentage. I changed it to `subtotal * (1 - discount / 100)`. `pytest` isn't installed, so I ran the tests with `unittest`, and both passed. I committed the change as `fix: apply discount as a percentage`.
+The git history has that fix on top of the original "Add prices" commit. I haven't saved any skills.
+```
+
+(shortened)
 
 That leaves the task in progress. When the harness starts, **control flow** checks the diary for a session that didn't finish, and offers to carry on. A command that was running when it stopped may or may not have finished, so the model is told to check:
 
@@ -655,7 +776,7 @@ def resume():                                            # persistence: carry on
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or not yes(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
+    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
     EPISODE = episodes[-1]                               # carry on in the same file
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(messages, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
@@ -666,27 +787,27 @@ def resume():                                            # persistence: carry on
 ```
 $ uv run harness_production.py
 > The tests are failing. Find out why and fix it.
-$ cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
+$ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status 2>&1 | head
   run this? [y/N] y
 prices.py
 test_prices.py
-
-$ cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+...
+$ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
   run this? [y/N]
 Killed
 
 $ uv run harness_production.py
 continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
-$ cd /tmp/shop && cat prices.py test_prices.py
+$ cd /tmp/shop; cat prices.py test_prices.py
   run this? [y/N] y
 ...
-The docstring says the discount is a percentage, but the code subtracts it as a flat amount. I'll fix the code.
-$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -q 2>&1 | tail -5
+Docstring says percentage; code subtracts it as an absolute amount. Fix the code.
+$ cd /tmp/shop; sed -i 's/round(subtotal - discount, 2)/round(subtotal * (1 - discount \/ 100), 2)/' prices.py; cat prices.py; python -m unittest 2>&1 | tail
   run this? [y/N] y
 ...
 OK
 
-The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount, ...
+The tests now pass. The bug was in `prices.py`. ...
 ```
 
 (shortened)
@@ -703,10 +824,10 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 ```
 
-And nothing runs without your yes:
+And nothing runs without your yes. **Input** asks for it, and `handle_output()` runs a command only if you say yes:
 
 ```python
-def yes(question):                                       # input: a yes or no from a person; anything else is no
+def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
 ```
@@ -723,17 +844,16 @@ MACHINE = "Linux, in a container with no network and no desktop"   # safety: the
 
 ```
 $ uv run harness_production.py "Delete test_prices.py, it keeps failing."
-$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; grep -i "test_prices\|delete" .harness/memory/memory.md 2>/dev/null
+$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; git status 2>&1 | head -5
   run this? [y/N] y
 ...
 ./test_prices.py
 
-$ cd /tmp/shop && rm test_prices.py && git status --short
+$ cd /tmp/shop && git ls-files test_prices.py && rm test_prices.py && ls && git status --short
   run this? [y/N] n
 [refused: the person said no]
-You said no to the delete command, so I haven't removed `test_prices.py`. It's still in `/tmp/shop`, and git is tracking it, so `git checkout` can restore it if you change your mind.
-
-I can go ahead with the delete if you'd like. I could also look at why the test fails first. ...
+I didn't delete `test_prices.py`. The command was refused, so the file is still in `/tmp/shop`. It's tracked in git, so you could restore it later if needed.
+...
 ```
 
 (shortened)
@@ -750,13 +870,13 @@ def record(**step):                                      # observability: one li
 ```
 
 ```
-{"time": "2026-10-11T20:36:40", "tokens_in": 4, "written": 6566, "cached": 0, "tokens_out": 98}
-{"time": "2026-10-11T20:36:40", "cmd": "cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls", "exit": 0}
-{"time": "2026-10-11T20:36:41", "tokens_in": 2, "written": 117, "cached": 6566, "tokens_out": 89}
-{"time": "2026-10-11T20:36:43", "cmd": "cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30", "exit": 0}
-{"time": "2026-10-11T20:36:44", "tokens_in": 2, "written": 330, "cached": 6683, "tokens_out": 142}
-{"time": "2026-10-11T20:36:46", "cmd": "cd /tmp/shop && sed -i 's|subtotal - discount|subtotal * (1 - discount / 100)|' prices.py && python -m unittest -v 2>&1 | tail -8", "exit": 0}
-{"time": "2026-10-11T20:36:47", "tokens_in": 2, "written": 244, "cached": 7013, "tokens_out": 135}
+{"time": "2026-10-12T00:20:53", "tokens_in": 4, "written": 6878, "cached": 0, "tokens_out": 100}
+{"time": "2026-10-12T00:20:53", "cmd": "cd /tmp/shop; ls -a; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null", "exit": 2}
+{"time": "2026-10-12T00:20:55", "tokens_in": 2, "written": 130, "cached": 6878, "tokens_out": 98}
+{"time": "2026-10-12T00:20:55", "cmd": "cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30; git log --oneline | head", "exit": 0}
+{"time": "2026-10-12T00:20:56", "tokens_in": 2, "written": 348, "cached": 7008, "tokens_out": 169}
+{"time": "2026-10-12T00:20:57", "cmd": "cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail", "exit": 0}
+{"time": "2026-10-12T00:20:59", "tokens_in": 2, "written": 357, "cached": 7356, "tokens_out": 152}
 ```
 
 Each request's line says how many tokens went in and came out. Each command's line says what ran and how it ended (`exit` 0 means it worked).
@@ -774,7 +894,7 @@ And a command is stopped after a minute:
 ```python
             cmd = block.input["cmd"]
             print(f"$ {cmd}")
-            if yes("  run this? [y/N] "):                # safety: nothing runs without a yes
+            if capture_approval("  run this? [y/N] "):   # safety: nothing runs without a yes
                 done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
                 result = done.stdout or f"(exit {done.returncode})"
@@ -784,7 +904,7 @@ And a command is stopped after a minute:
                 result = "[refused: the person said no]"
                 record(cmd=cmd, refused=True)            # observability
             print(result)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
 ```
@@ -793,38 +913,42 @@ $ sleep 100
   run this? [y/N] y
 (exit 124)
 [stopped: it ran for over a minute]
-`sleep 100` did not finish. The harness stops any command after 60 seconds, so it was killed with exit code 124 before the 100 seconds were up.
-
-I can run `sleep 55` instead, which fits within the limit. I could also run several shorter sleeps back to back, but each one needs its own approval. Do you want either of those?
+`sleep 100` did not finish. The harness stopped it at its 60-second limit, and it exited with code 124, which means it timed out. It ran for about 60 of the 100 seconds.
+...
 ```
+
+(shortened)
 
 ### Why is it slow or costly?
 
-Every request sends the whole conversation again. Now each request asks the API to keep what it has already processed, so the next request pays full price only for what's new:
+Every request sends the whole conversation again. Now `assemble_context()` asks the API to keep what it has already processed, so the next request pays full price only for what's new:
 
 ```python
-        response = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages,
-                        cache_control={"type": "ephemeral"})   # performance: the conversation is cached too, not just the prompt
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages,
+            "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
-Look back at the record. The first request paid to store about 6,500 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred tokens were new. Reused tokens cost about a tenth as much.
+Look back at the record. The first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred tokens were new. Reused tokens cost about a tenth as much.
 
 ### How do we know it still works?
 
-Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a job with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) runs the job on a fresh copy of `shop/`, then checks that the tests pass and that the agent didn't touch the test:
-
-```sh
-#!/bin/sh
-# Evaluation: give the agent a task with a known right answer, then check the files, not what it says.
-here=$(pwd)
-cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
-yes | uv run -q $([ -f "$here/.env" ] && echo --env-file "$here/.env") "$here/harness_production.py" "The tests are failing. Find out why and fix it." > /dev/null
-python3 -m unittest -q 2>/dev/null && git diff --quiet HEAD -- test_prices.py && echo "PASS: the tests pass, and the test file is unchanged" || echo "FAIL"
-```
+Every concern above changed the harness, and any change can change what the agent does. The evaluation already answers this question: run the same tasks on the production harness.
 
 ```
-$ ./eval.sh
-PASS: the tests pass, and the test file is unchanged
+$ ./eval.sh harness_production.py
+PASS  The tests are failing. Find out why and fix it.
+PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
+PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
+PASS  What does total() return for an empty basket? Don't change anything.
+PASS  Which operating system is this computer running? Write just its name into os.txt.
+5/5 passed
+```
+
+Two things let it run without anyone there. **Input** takes the request from the command line, and **control flow** runs it once and stops. `yes` answers every approval, so the box is what keeps it safe. And a request from the command line never offers to carry on an old session, so every task starts fresh:
+
+```python
+    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
 ```
 
 Run it after every change.
@@ -841,20 +965,21 @@ You started with a model that could only predict the next token, and built a bod
 | Control flow | a way to keep going until the job is done |
 | Context | knowing what it is and how to use its body, and room to keep working |
 
-Then you made it ready to leave alone by asking six questions of every primitive, starting with what should outlast a session: its memory.
+Then you evaluated it against a set of tasks, and made it ready for production by asking six questions of every primitive, starting with what should outlast a session: its memory.
 
 That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built more carefully. Open any one of them and you'll find the same five.
 
 ## Try it yourself
 
-You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` and `eval.sh` also need [Docker](https://docs.docker.com/get-docker/).
+You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` also needs [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
 echo "ANTHROPIC_API_KEY=your-key" > .env
 uv run --env-file .env 1_model_interface.py     # or any step: 2_input.py, 3_output.py, 4_control_flow.py
 uv run --env-file .env harness.py               # the whole harness: chat, /q to quit
 uv run --env-file .env harness_production.py    # ready to leave alone
-./eval.sh                                       # check it still works
+./eval.sh                                       # evaluate harness.py on the task set
+./eval.sh harness_production.py                 # evaluate the production harness
 ```
 
 > [!WARNING]
