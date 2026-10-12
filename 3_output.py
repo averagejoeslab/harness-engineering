@@ -1,7 +1,7 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import subprocess, sys
+import subprocess
 from anthropic import Anthropic
 
 # ── model interface ─────────────────────────────────────────────────────────
@@ -35,15 +35,11 @@ def handle_output(output):                               # output: handles the m
     return results
 
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input(prompt="> "):                          # input: captures what a person types
-    while True:
-        print(prompt, end="", flush=True)
-        line = sys.stdin.readline()
-        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
-        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
-        prompt = "> "
+def capture_input():                                     # input: captures what a person types
+    line = ""
+    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    return line
 input = capture_input()                                  # input: what a person types while it runs
-if input == "/q": sys.exit()
 
 output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet

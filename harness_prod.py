@@ -256,13 +256,10 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input(prompt="> "):                          # input: captures what a person types
-    while True:
-        print(prompt, end="", flush=True)
-        line = sys.stdin.readline()
-        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
-        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
-        prompt = "> "
+def capture_input():                                     # input: captures what a person types
+    line = ""
+    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    return line
 def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
@@ -272,7 +269,6 @@ def control_flow():                                      # control flow: defines
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
     messages = resume()                                  # persistence: an unfinished session comes back first
     input = "" if messages else " ".join(sys.argv[1:]) or capture_input()
-    if input == "/q": return
     start_box()                                          # safety: every command runs in the box
     drop = 0
     if input: add(messages, {"role": "user", "content": input})
@@ -292,8 +288,7 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             add(messages, {"role": "user", "content": results})
             continue
-        if not chat or (input := capture_input("\n> ")) == "/q":
-            break                                        # stop: a request from the command line is done, or /q
-        add(messages, {"role": "user", "content": input})   # hand back: the person's next message
+        if not chat: break                               # stop: a request from the command line is done
+        add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()

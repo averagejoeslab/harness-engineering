@@ -93,19 +93,15 @@ def compact(messages, drop):                             # current inputs: too l
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input(prompt="> "):                          # input: captures what a person types
-    while True:
-        print(prompt, end="", flush=True)
-        line = sys.stdin.readline()
-        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
-        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
-        prompt = "> "
+def capture_input():                                     # input: captures what a person types
+    line = ""
+    while not line.strip(): line = input("> ")           # Enter on an empty line: ask again
+    return line
 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
     input = " ".join(sys.argv[1:]) or capture_input()
-    if input == "/q": return
     messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
     while True:
         try:
@@ -120,8 +116,7 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             messages.append({"role": "user", "content": results})
             continue
-        if not chat or (input := capture_input("\n> ")) == "/q":
-            break                                        # stop: a request from the command line is done, or /q
-        messages.append({"role": "user", "content": input})   # hand back: the person's next message
+        if not chat: break                               # stop: a request from the command line is done
+        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()
