@@ -206,7 +206,7 @@ Now anyone can ask, but the model can still only reply in words: it asks us to s
 
 ### 3. Let it act
 
-Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's thinking as it streams in, in gray after `∴`, and its words after `>`. `nested()` puts what a command printed under it, after `└`:
+Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words as they stream in, after `>`, and `nested()` puts what a command printed under it, after `└`:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -221,19 +221,15 @@ Next in the flow is **output**, which handles what the model sends back. We desc
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`3_output.py`](./3_output.py), `tools`, `thinking`, `show()`, `nested()` and `handle_output()` are added:
+In [`3_output.py`](./3_output.py), `tools`, `show()`, `nested()` and `handle_output()` are added:
 
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-thinking = {"type": "adaptive", "display": "summarized"}  # output: ask for a summary of its thinking, to show
-
-def show(event):                                         # output: its thinking after ∴ in gray, its words after >, shown as they're written
-    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
+def show(event):                                         # output: the model's words, after >, shown as they're written
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
-
+    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -249,11 +245,11 @@ def handle_output(output):                               # output: handles the m
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
-output = request_response(show, max_tokens=16384, thinking=thinking, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `∴` is the model's thinking, `>` is what it said, `$` is a command it ran, and `└` is what that command printed:
+We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `└` is what that command printed:
 
 ```bash
 uv run ../3_output.py
@@ -297,7 +293,7 @@ def control_flow():                                      # control flow: defines
     input = " ".join(sys.argv[1:]) or capture_input()
     messages = [{"role": "user", "content": input}]
     while True:
-        output = request_response(show, max_tokens=16384, thinking=thinking, tools=tools, messages=messages).content
+        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
@@ -472,7 +468,7 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
-            output = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages)).content
+            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
         except BadRequestError as e:                     # too long to send: summarize on the next pass
             if "prompt is too long" not in str(e): raise
             drop += 1
@@ -906,10 +902,12 @@ def capture_approval(question):                          # input: a yes or no fr
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
 
-# ── control flow ────────────────────────────────────────────────────────────
-def control_flow():                                      # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    
+```
+
+```python
+    for block in calls:
+        print(f"$ {block.input['cmd']}")
+        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
 ```
 
 **Context** tells the truth about the new body: the self model describes the box, not your computer, and the order of operations stops at the app's own interface, since there's no desktop:
@@ -969,6 +967,26 @@ tail -7 ~/.harness/record.jsonl
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
 
+The record shows what it did, but not why. So **output** also shows a summary of the model's thinking, in gray after `∴`, when it thinks before it acts:
+
+```python
+thinking = {"type": "adaptive", "display": "summarized"}  # observability: ask for a summary of its thinking, to show
+
+def show(event):                                         # output: the model's words, after >, shown as they're written; observability: its thinking, in gray after ∴
+    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
+    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
+    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
+```
+
+Every request asks for it:
+
+```python
+            response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
+```
+
+The model decides when to think. On a simple task it often doesn't, so the `∴` lines come and go.
+
 ### What if something breaks?
 
 A request can fail, and a command can hang forever. Now the **model interface** retries a failed request up to three times:
@@ -980,19 +998,13 @@ client = Anthropic(max_retries=3)                        # resilience: retry a r
 And **output** stops a command after a minute:
 
 ```python
-            cmd = block.input["cmd"]
-            print(f"$ {cmd}")
-            if capture_approval("  run this? [y/N] "):   # safety: nothing runs without a yes
-                done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-                result = done.stdout or f"(exit {done.returncode})"
-                if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
-                record(cmd=cmd, exit=done.returncode)    # observability
-            else:
-                result = "[refused: the person said no]"
-                record(cmd=cmd, refused=True)            # observability
-            print(nested(result))
-            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+def run(cmd, yes):                                       # output: runs one command, if the person said yes
+    if not yes: return "[refused: the person said no]", "refused"
+    done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    result = done.stdout or f"(exit {done.returncode})"
+    if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
+    return result, done.returncode
 ```
 
 Ask for a command that takes longer:
@@ -1022,6 +1034,45 @@ def assemble_context(messages):                          # context: assembles wh
 ```
 
 In the record, the first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred were new. Reused tokens cost about a tenth as much.
+
+The model can also ask for several commands at once, when none needs another's result. **Output** ran them one after another. Now it asks about each, then runs the approved ones at the same time, and shows each result under its command:
+
+```python
+    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
+        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
+```
+
+Ask for three commands that each take five seconds:
+
+```bash
+uv run ../harness_prod.py "Run these three independent commands in parallel, as three separate tool calls in one response: sleep 5; echo a — sleep 5; echo b — sleep 5; echo c. Then tell me how long it took."
+```
+
+```
+$ date +%s.%N; sleep 5; echo a; date +%s.%N
+  run this? [y/N] y
+$ date +%s.%N; sleep 5; echo b; date +%s.%N
+  run this? [y/N] y
+$ date +%s.%N; sleep 5; echo c; date +%s.%N
+  run this? [y/N] y
+$ date +%s.%N; sleep 5; echo a; date +%s.%N
+  └ 1791773961.422496989
+    a
+    1791773966.427166388
+$ date +%s.%N; sleep 5; echo b; date +%s.%N
+  └ 1791773961.428881137
+    b
+    1791773966.432942596
+$ date +%s.%N; sleep 5; echo c; date +%s.%N
+  └ 1791773961.369802358
+    c
+    1791773966.378826200
+> The three commands ran in parallel and took about 5 seconds in total, not 15. I added `date` calls to each command to time them.
+  All three started within about 0.06 s of each other, around 1791773961.4. They each finished about 5.0 s later, at roughly 1791773966.4.
+  The output was `a`, `b` and `c`.
+```
+
+The model decides which commands can run together. The harness just doesn't make them wait.
 
 ### How do we know it still works?
 

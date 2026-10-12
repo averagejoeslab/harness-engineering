@@ -2,6 +2,7 @@
 # dependencies = ["anthropic"]
 # ///
 import subprocess, sys, os, re, glob, json, datetime, atexit
+from concurrent.futures import ThreadPoolExecutor
 from anthropic import Anthropic, BadRequestError
 
 # ── model interface ─────────────────────────────────────────────────────────
@@ -16,9 +17,9 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 SHELL = "sh"                                             # safety: the shell inside the box
 tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-thinking = {"type": "adaptive", "display": "summarized"}  # output: ask for a summary of its thinking, to show
+thinking = {"type": "adaptive", "display": "summarized"}  # observability: ask for a summary of its thinking, to show
 
-def show(event):                                         # output: its thinking after ∴ in gray, its words after >, shown as they're written
+def show(event):                                         # output: the model's words, after >, shown as they're written; observability: its thinking, in gray after ∴
     if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
     if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
@@ -27,23 +28,28 @@ def show(event):                                         # output: its thinking 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
+def run(cmd, yes):                                       # output: runs one command, if the person said yes
+    if not yes: return "[refused: the person said no]", "refused"
+    done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    result = done.stdout or f"(exit {done.returncode})"
+    if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
+    return result, done.returncode
+
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    calls = [block for block in output if block.type == "tool_use"]
+    approved = []
+    for block in calls:
+        print(f"$ {block.input['cmd']}")
+        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
+    with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
+        done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
     results = []
-    for block in output:
-        if block.type == "tool_use":
-            cmd = block.input["cmd"]
-            print(f"$ {cmd}")
-            if capture_approval("  run this? [y/N] "):   # safety: nothing runs without a yes
-                done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-                result = done.stdout or f"(exit {done.returncode})"
-                if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
-                record(cmd=cmd, exit=done.returncode)    # observability
-            else:
-                result = "[refused: the person said no]"
-                record(cmd=cmd, refused=True)            # observability
-            print(nested(result))
-            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+    for block, (result, exit) in zip(calls, done):
+        record(cmd=block.input["cmd"], exit=exit)       # observability
+        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
+        print(nested(result))
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
 # ── context ─────────────────────────────────────────────────────────────────
