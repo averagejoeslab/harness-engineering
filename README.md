@@ -130,7 +130,7 @@ $ uv run 1_model_interface.py
 
 (shortened)
 
-Our code sent the job to the model through `request_response()` and printed the response it got back. The model replied in words: it can't see the project, so it asks for the code and the test output. The problem starts before the model, where the request comes from: it's written into the code, so nobody can ask anything else. That's the first part of the flow: input.
+Our code sent a hardcoded request to the model through `request_response()` and printed the response. Because the request is hardcoded, it can't come from anywhere else: nobody can ask anything new. And the response shows the model can't act. It can't look at the code, so it asks us to share it. We'll fix both by following the flow of the data, starting where it begins: input.
 
 ### 2. Let someone ask
 
