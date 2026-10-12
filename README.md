@@ -110,17 +110,11 @@ output = request_response(max_tokens=16384, messages=[{"role": "user", "content"
 print(output.model_dump_json(indent=2))
 ```
 
-To run the steps yourself, export your [API key](https://console.anthropic.com/) and run each one from inside [`shop/`](./shop/), so the agent works on the task's files. The steps change those files; `git checkout .` puts the bug back.
+We give it our [API key](https://console.anthropic.com/), send it the task, hardcoded, and print what comes back:
 
 ```bash
 export ANTHROPIC_API_KEY=your-key
-cd shop
-```
-
-We send it the task, hardcoded, and print what comes back:
-
-```bash
-uv run ../1_model_interface.py
+uv run 1_model_interface.py
 ```
 
 ```
@@ -182,7 +176,7 @@ print(output.model_dump_json(indent=2))
 We run it, and type the task at the `>` prompt:
 
 ```bash
-uv run ../2_input.py
+uv run 2_input.py
 ```
 
 ```
@@ -249,9 +243,10 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-We run it and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
+Its commands run in the folder it starts in, so we start it in [`shop/`](./shop/) and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
 
 ```bash
+cd shop
 uv run ../3_output.py
 ```
 
@@ -540,9 +535,10 @@ check "Which operating system is this computer running? Write just its name into
 echo "$passed/$total passed"
 ```
 
-We run it on `harness.py`:
+It copies `shop/` as it is, so we put the bug back first, then run it on `harness.py`:
 
 ```bash
+git checkout .
 ../eval.sh
 ```
 
@@ -826,9 +822,10 @@ def resume():                                            # persistence: carry on
     return messages
 ```
 
-We start the task, stop the harness partway through, and start it again:
+We put the bug back, start the task, stop the harness partway through, and start it again:
 
 ```bash
+git checkout .
 uv run ../harness_production.py
 ```
 
@@ -1001,9 +998,10 @@ In the record, the first request paid to store about 6,900 tokens (`written`). E
 
 ### How do we know it still works?
 
-Every concern changed the harness, and any change can change what the agent does. The evaluation already answers this: run the same tasks on the production harness.
+Every concern changed the harness, and any change can change what the agent does. The evaluation already answers this: put the bug back, and run the same tasks on the production harness.
 
 ```bash
+git checkout .
 ../eval.sh harness_production.py
 ```
 
