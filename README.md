@@ -95,6 +95,8 @@ All we have is a model. The first primitive, the **model interface**, reaches it
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+In [`1_model_interface.py`](./1_model_interface.py):
+
 ```python
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
@@ -108,21 +110,31 @@ output = request_response(max_tokens=16384, messages=[{"role": "user", "content"
 print(output.model_dump_json(indent=2))
 ```
 
+To run the steps yourself, export your [API key](https://console.anthropic.com/) and run each one from inside [`shop/`](./shop/), so the agent works on the task's files. The steps change those files; `git checkout .` puts the bug back.
+
+```bash
+export ANTHROPIC_API_KEY=your-key
+cd shop
+```
+
 We send it the task, hardcoded, and print what comes back:
 
+```bash
+uv run ../1_model_interface.py
 ```
-$ uv run 1_model_interface.py
+
+```
 {
   "content": [
     {
-      "text": "I don't have access to your code, test files, or test output in this conversation, so I can't yet tell why the tests are failing. Could you share: ...",
+      "text": "I don't see any code, test output, or attachments in our conversation, so I can't tell why the tests are failing yet. To track it down, I'd need: ...",
       "type": "text"
     }
   ],
   "stop_reason": "end_turn",
   "usage": {
     "input_tokens": 24,
-    "output_tokens": 313,
+    "output_tokens": 346,
     ...
   }
 }
@@ -134,7 +146,7 @@ The model answered, but it can't act, so it asks us to share the code. And the r
 
 ### 2. Let someone ask
 
-Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types, and a request can also come from the command line. We also describe one tool, `shell`, so the model knows it can ask to run a command:
+Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types into the terminal while the program runs:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -149,6 +161,8 @@ Next in the flow is **input**, which captures what comes in. `capture_input()` r
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+In [`2_input.py`](./2_input.py), `capture_input()` is added:
+
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input(prompt="> "):                          # input: captures what a person types
@@ -158,43 +172,40 @@ def capture_input(prompt="> "):                          # input: captures what 
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
+input = capture_input()                                  # input: what a person types while it runs
 if input == "/q": sys.exit()
 
-output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
 ```
 
-```python
-tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+We run it, and type the task at the `>` prompt:
+
+```bash
+uv run ../2_input.py
 ```
 
-We pass the task on the command line this time, and print what comes back:
-
 ```
-$ uv run 2_input.py "The tests are failing. Find out why and fix it."
+> The tests are failing. Find out why and fix it.
 {
   "content": [
     {
-      "input": {
-        "cmd": "pwd; ls; git status --short | head"
-      },
-      "name": "shell",
-      "type": "tool_use"
+      "text": "I don't see any code, test output, or files in our conversation, so I can't tell why the tests are failing yet. Could you share: ...",
+      "type": "text"
     }
   ],
-  "stop_reason": "tool_use",
+  "stop_reason": "end_turn",
   ...
 }
 ```
 
 (shortened)
 
-The request now comes from outside the code, and the model asks to act: it wants to run a command to look at the project. But nothing handles its output, so the command never runs. That's next in the flow: output.
+Now anyone can ask, but the model can still only reply in words: it asks us to share the code, because it can't act. That's next in the flow: output.
 
 ### 3. Let it act
 
-So we add **output**:
+Next is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model knows it can ask to run a command:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -208,6 +219,14 @@ So we add **output**:
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+In [`3_output.py`](./3_output.py):
+
+```python
+tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+```
+
+`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world:
 
 ```python
 def show(event):                                         # output: text, shown as it's written
@@ -230,16 +249,18 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world. From here on, a `$` line after the first is a command the agent ran, followed by what it printed.
+We run it and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
+
+```bash
+uv run ../3_output.py
+```
 
 ```
-$ uv run 3_output.py "The tests are failing. Find out why and fix it."
-$ pwd; ls; git status 2>&1 | head
+> The tests are failing. Find out why and fix it.
+$ pwd; ls; git status --short | head
 /tmp/shop
 prices.py
 test_prices.py
-On branch master
-nothing to commit, working tree clean
 ```
 
 It acted, but what the command printed never reaches the model, so it can't take the next step.
@@ -261,10 +282,14 @@ So we add **control flow**:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+In [`4_control_flow.py`](./4_control_flow.py):
+
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
-def control_flow(input):                                 # control flow: defines the shape of the loop
-    chat = len(sys.argv) < 2
+def control_flow():                                      # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
+    input = " ".join(sys.argv[1:]) or capture_input()
+    if input == "/q": return
     messages = [{"role": "user", "content": input}]
     while True:
         output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
@@ -277,26 +302,29 @@ def control_flow(input):                                 # control flow: defines
             break                                        # stop: a request from the command line is done, or /q
         messages.append({"role": "user", "content": input})   # hand back: the person's next message
 
-control_flow(input)
+control_flow()
 ```
 
-`control_flow()` defines the shape of the loop. While commands run, it sends back what they printed and goes again. When the model is done, it hands back to you. It stops on `/q`, or when a request from the command line is finished.
+`control_flow()` defines the shape of the loop. While commands run, it sends back what they printed and goes again. When the model is done, it hands back to you, and `/q` stops it. It also takes a request from the command line, and then it runs once and stops.
+
+This time we pass the task on the command line:
+
+```bash
+uv run ../4_control_flow.py "The tests are failing. Find out why and fix it."
+```
 
 ```
-$ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
-$ pwd; ls; git status 2>/dev/null | head
+$ pwd; ls; git status --short | head
 ...
 $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
 ...
-AssertionError: 15 != 22.5
-...
-$ sed -i 's/subtotal - discount/subtotal * (1 - discount \/ 100)/' prices.py; python -m unittest -v 2>&1 | tail
+The docstring says discount is a percentage, but the code subtracts it as a flat amount.
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; python -m unittest -v 2>&1 | tail
 ...
 OK
 
-The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test `discount=10` expecting 22.5, both treat it as a percentage. With a subtotal of 25, the old code returned 15 instead of 22.5.
-
-I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests now pass. ...
+The tests now pass. I ran them with `python -m unittest`, because pytest isn't installed here.
+**Cause:** `total()` in `prices.py` is documented as taking a percentage discount, but it subtracted the discount as a flat amount. With a subtotal of 25 and `discount=10`, it returned 15 instead of 22.5.
 ```
 
 (shortened)
@@ -305,16 +333,15 @@ The task is done. **This is an agent:** it keeps going until the task is finishe
 
 But it doesn't know what it is, what its body is, or how best to use it. Ask, and it has to go looking:
 
+```bash
+uv run ../4_control_flow.py "Who are you, and where are you working?"
 ```
-$ uv run 4_control_flow.py "Who are you, and where are you working?"
-I'll check the environment so I can answer the second part.
-$ pwd; whoami; hostname; uname -a
+
+```
+I'll check the environment so I can answer accurately.
+$ pwd
 ...
-
-I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, or debugging.
-
-Here's the environment I'm working in:
-- **Working directory:** `/tmp/shop`
+I'm an AI assistant. I can run shell commands, and I'm using that here to work on tasks for you.
 ...
 ```
 
@@ -451,21 +478,21 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
             continue
 ```
 
-```
-$ uv run harness.py "Who are you, and where are you working?"
-$ pwd; hostname; uname -sr; ls | head -20
-/tmp/shop
-vm
-Linux 6.18.44-fc-v114
-prices.py
-test_prices.py
+Now ask it who it is:
 
-I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only way to act is a bash shell. With it I can work with files, run and install programs, and reach the network.
-
-I'm working in `/tmp/shop` on a Linux machine called `vm` (kernel 6.18.44). The date is 2026-10-12. The directory has two files: `prices.py` and `test_prices.py`. I haven't opened either yet.
+```bash
+uv run ../harness.py "Who are you, and where are you working?"
 ```
 
-It knows what it is, its body and the date, because they're in what it's shown. It only ran a command to look at the folder, which no self model can tell it.
+```
+I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only tool is a bash shell. I use it to work with files, run programs, and reach the network, and I read back its output to check that each step worked.
+
+I'm working on a Linux machine (kernel 6.18.44, x86_64). My working directory is `/tmp/shop`, and today's date is 2026-10-12. I haven't run anything in the shell yet, so this comes from my setup description and not from a live check.
+
+I can look around the directory, or start on a task, whichever you prefer.
+```
+
+It didn't run a single command. It knows what it is, its body and the date, because they're in what it's shown, and it says so.
 
 That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the task, knows what it is and how to use its body, and keeps going however long the session runs.
 
@@ -486,10 +513,10 @@ It did the task once. Will it do it again, or do a different one? Any change can
 ```sh
 #!/bin/sh
 # Evaluation: tasks with known right answers, each run in a fresh copy of shop/, checked by what the agent did, not what it says.
-# ./eval.sh                          the harness from Building a Harness
-# ./eval.sh harness_production.py    the production harness (needs Docker)
+# ./eval.sh                          evaluates harness.py
+# ./eval.sh harness_production.py    evaluates the production harness (needs Docker)
 harness=${1:-harness.py}
-here=$(pwd)
+here=$(cd "$(dirname "$0")" && pwd)                     # the repo, wherever this is run from
 env=$([ -f "$here/.env" ] && echo --env-file "$here/.env")
 passed=0; total=0
 check() {                                                # $1: the request; $2: true only if it was done right
@@ -513,8 +540,13 @@ check "Which operating system is this computer running? Write just its name into
 echo "$passed/$total passed"
 ```
 
+We run it on `harness.py`:
+
+```bash
+../eval.sh
 ```
-$ ./eval.sh
+
+```
 PASS  The tests are failing. Find out why and fix it.
 PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
 PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
@@ -540,7 +572,7 @@ Getting it ready means asking six questions of every primitive:
 | Why is it slow or costly? | Performance |
 | How do we know it still works? | Evaluation |
 
-Each answer adds a few lines to `harness.py`, marked with its question. The result is [`harness_production.py`](./harness_production.py).
+Each answer adds a few lines to `harness.py`, marked with its question. The result is [`harness_production.py`](./harness_production.py). It runs commands in [Docker](https://docs.docker.com/get-docker/), so you'll need that running.
 
 ### What should outlast the session?
 
@@ -710,8 +742,11 @@ Summaries now lose nothing: the diary has every message, and the summary says wh
 
 Tell it something once:
 
+```bash
+uv run ../harness_production.py 'From now on, write commit messages in lowercase, starting with "fix:". Remember that.'
 ```
-$ uv run harness_production.py "From now on, write commit messages in lowercase, starting with "fix:". Remember that."
+
+```
 $ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
 - commit messages: write in lowercase, starting with "fix:"
 EOF
@@ -720,46 +755,55 @@ cat .harness/memory/memory.md
 # Memory
 - commit messages: write in lowercase, starting with "fix:"
 
-Noted and saved. From now on, I'll write commit messages in lowercase and start them with "fix:".
+Noted and saved. From now on, my commit messages will be in lowercase and start with "fix:".
 ```
 
 In a new session, give it the task and ask it to commit:
 
+```bash
+uv run ../harness_production.py "The tests are failing. Find out why, fix it, and commit."
 ```
-$ uv run harness_production.py "The tests are failing. Find out why, fix it, and commit."
-$ cd /tmp/shop && ls -a && git status --short | head && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+
+```
+$ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
   run this? [y/N] y
-...
 # Memory
 - commit messages: write in lowercase, starting with "fix:"
 ...
 The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
-$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest 2>&1 | tail -5 && git add prices.py && git commit -qm "fix: apply discount as a percentage"
+$ cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; python -m unittest 2>&1 | tail -5; git add prices.py && git commit -qm "fix: apply discount as a percentage" && git log --oneline | head -2
   run this? [y/N] y
 ...
 OK
-fe38fcc fix: apply discount as a percentage
-6ce8184 Add prices
+30397e0 fix: apply discount as a percentage
 
-... I committed the fix as `fix: apply discount as a percentage`, following your lowercase `fix:` convention for commit messages.
+... I committed the change as `fix: apply discount as a percentage`, following your lowercase `fix:` convention.
 ```
 
 (shortened)
 
 Ask about the past:
 
+```bash
+uv run ../harness_production.py "What have we done in this folder before?"
 ```
-$ uv run harness_production.py "What have we done in this folder before?"
-$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T00-20-43 | cut -c1-250
+
+```
+$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T01-32-36 | cut -c1-250
   run this? [y/N] y
 ...
-.harness/episodes/2026-10-12T00-20-29.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-.harness/episodes/2026-10-12T00-20-34.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+.harness/episodes/2026-10-12T01-32-22.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+.harness/episodes/2026-10-12T01-32-27.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
 ...
-This folder is a small shop project: `prices.py` with its tests in `test_prices.py`. It's a git repo. I found two earlier sessions:
-1. **Commit message rule.** You told me to write commit messages in lowercase, starting with "fix:". I saved that to memory.
-2. **Failing tests.** `total()` in `prices.py` subtracted the discount as a flat amount, but it should be a percentage. I changed it to `subtotal * (1 - discount / 100)`. `pytest` isn't installed, so I ran the tests with `unittest`, and both passed. I committed the change as `fix: apply discount as a percentage`.
-The git history has that fix on top of the original "Add prices" commit. I haven't saved any skills.
+Here is what we've done in this folder, from the git history, my memory and the session diary:
+**Sessions**
+1. **Saved a commit-message rule.** You asked me to write commit messages in lowercase, starting with "fix:". I stored that in memory.
+2. **Fixed failing tests.** `total()` in `prices.py` subtracted the discount as a flat amount, but the docstring and the test (`discount=10` → 22.5) treat it as a percentage. I changed it to `round(subtotal * (1 - discount / 100), 2)`. Both tests passed, run with `python -m unittest` because pytest isn't installed. I committed it as `fix: apply discount as a percentage`.
+3. **This session.** You're asking what we've done before.
+**Git history**
+- `da8592e` Add prices (`prices.py` and `test_prices.py`)
+- `30397e0` fix: apply discount as a percentage (a one-line change to `prices.py`)
+The folder holds a small price-calculation module, `prices.py`, and its tests, `test_prices.py`.
 ```
 
 (shortened)
@@ -782,30 +826,39 @@ def resume():                                            # persistence: carry on
     return messages
 ```
 
+We start the task, stop the harness partway through, and start it again:
+
+```bash
+uv run ../harness_production.py
 ```
-$ uv run harness_production.py
+
+```
 > The tests are failing. Find out why and fix it.
-$ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status 2>&1 | head
+$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
   run this? [y/N] y
-prices.py
-test_prices.py
 ...
-$ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+$ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -20; git log --oneline | head
   run this? [y/N]
 Killed
+```
 
-$ uv run harness_production.py
+```bash
+uv run ../harness_production.py
+```
+
+```
 continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
-$ cd /tmp/shop; cat prices.py test_prices.py
+$ cd /tmp/shop; cat prices.py test_prices.py; git log --oneline | head
   run this? [y/N] y
 ...
-Docstring says percentage; code subtracts it as an absolute amount. Fix the code.
-$ cd /tmp/shop; sed -i 's/round(subtotal - discount, 2)/round(subtotal * (1 - discount \/ 100), 2)/' prices.py; cat prices.py; python -m unittest 2>&1 | tail
+Docstring says percentage; code subtracts the raw number. Fix it.
+$ cd /tmp/shop; sed -i 's/subtotal - discount, 2/subtotal * (1 - discount \/ 100), 2/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail -8
   run this? [y/N] y
 ...
 OK
 
-The tests now pass. The bug was in `prices.py`. ...
+The tests were failing because `total()` in `prices.py` subtracted `discount` from the subtotal as a flat amount. Its docstring and the test both treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
+I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests in `test_prices.py` now pass. I haven't committed the change.
 ```
 
 (shortened)
@@ -828,6 +881,11 @@ And nothing runs without your yes: **input** asks, and `handle_output()` runs a 
 def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
+
+# ── control flow ────────────────────────────────────────────────────────────
+def control_flow():                                      # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
+    
 ```
 
 **Context** tells the truth about the new body: the self model describes the box, not your computer, and the order of operations stops at the app's own interface, since there's no desktop:
@@ -840,21 +898,23 @@ SHELL = "sh"                                             # safety: the shell ins
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-```
-$ uv run harness_production.py "Delete test_prices.py, it keeps failing."
-$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; git status 2>&1 | head -5
-  run this? [y/N] y
-...
-./test_prices.py
+Ask it to delete the test. Say yes to its first command, and no to the next:
 
-$ cd /tmp/shop && git ls-files test_prices.py && rm test_prices.py && ls && git status --short
+```bash
+uv run ../harness_production.py "Delete test_prices.py, it keeps failing."
+```
+
+```
+$ cd /tmp/shop && find . -name 'test_prices.py' -not -path './.harness/*'; git status --short 2>/dev/null | head
+  run this? [y/N] y
+./test_prices.py
+?? .harness/
+$ cd /tmp/shop && git ls-files test_prices.py; git log --oneline -1 2>&1 | head -2
   run this? [y/N] n
 [refused: the person said no]
-I didn't delete `test_prices.py`. The command was refused, so the file is still in `/tmp/shop`. It's tracked in git, so you could restore it later if needed.
-...
+I haven't deleted anything. The check I ran just before deleting was refused, so I stopped there. That check was to see whether `test_prices.py` is tracked in git, which would tell us whether the file could be recovered afterwards.
+Do you want me to go ahead and run `rm test_prices.py`? Or I can run the git check first so we know whether it's recoverable.
 ```
-
-(shortened)
 
 ### What did it actually do?
 
@@ -867,14 +927,20 @@ def record(**step):                                      # observability: one li
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
+The record of a run of the task:
+
+```bash
+tail -7 ~/.harness/record.jsonl
 ```
-{"time": "2026-10-12T00:20:53", "tokens_in": 4, "written": 6878, "cached": 0, "tokens_out": 100}
-{"time": "2026-10-12T00:20:53", "cmd": "cd /tmp/shop; ls -a; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null", "exit": 2}
-{"time": "2026-10-12T00:20:55", "tokens_in": 2, "written": 130, "cached": 6878, "tokens_out": 98}
-{"time": "2026-10-12T00:20:55", "cmd": "cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30; git log --oneline | head", "exit": 0}
-{"time": "2026-10-12T00:20:56", "tokens_in": 2, "written": 348, "cached": 7008, "tokens_out": 169}
-{"time": "2026-10-12T00:20:57", "cmd": "cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail", "exit": 0}
-{"time": "2026-10-12T00:20:59", "tokens_in": 2, "written": 357, "cached": 7356, "tokens_out": 152}
+
+```
+{"time": "2026-10-12T01:32:47", "tokens_in": 4, "written": 6876, "cached": 0, "tokens_out": 98}
+{"time": "2026-10-12T01:32:47", "cmd": "cd /tmp/shop; ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null", "exit": 2}
+{"time": "2026-10-12T01:32:48", "tokens_in": 2, "written": 117, "cached": 6876, "tokens_out": 110}
+{"time": "2026-10-12T01:32:48", "cmd": "cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30 || python -m unittest -v 2>&1 | tail -30", "exit": 0}
+{"time": "2026-10-12T01:32:50", "tokens_in": 2, "written": 351, "cached": 6993, "tokens_out": 163}
+{"time": "2026-10-12T01:32:50", "cmd": "cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail", "exit": 0}
+{"time": "2026-10-12T01:32:52", "tokens_in": 2, "written": 351, "cached": 7344, "tokens_out": 161}
 ```
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
@@ -905,17 +971,21 @@ And **output** stops a command after a minute:
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
+Ask for a command that takes longer:
+
+```bash
+uv run ../harness_production.py "Run sleep 100 as a single command, then tell me it finished."
 ```
-$ uv run harness_production.py "Run sleep 100 as a single command, then tell me it finished."
+
+```
+I'll run it as asked. Commands here are stopped after 60 seconds, so it may not get through all 100.
 $ sleep 100
   run this? [y/N] y
 (exit 124)
 [stopped: it ran for over a minute]
-`sleep 100` did not finish. The harness stopped it at its 60-second limit, and it exited with code 124, which means it timed out. It ran for about 60 of the 100 seconds.
-...
+`sleep 100` didn't finish. The harness stopped it at the 60-second limit, and it exited with code 124, which means timeout. It got about 60 of the 100 seconds.
+I can run `sleep 55` instead, which fits under the limit. I could also chain shorter sleeps across separate commands. Each one would be capped at 60 seconds, so that would take two calls.
 ```
-
-(shortened)
 
 ### Why is it slow or costly?
 
@@ -933,8 +1003,11 @@ In the record, the first request paid to store about 6,900 tokens (`written`). E
 
 Every concern changed the harness, and any change can change what the agent does. The evaluation already answers this: run the same tasks on the production harness.
 
+```bash
+../eval.sh harness_production.py
 ```
-$ ./eval.sh harness_production.py
+
+```
 PASS  The tests are failing. Find out why and fix it.
 PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
 PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
@@ -972,12 +1045,14 @@ That's harness engineering. Every agent, from this one to the coding assistants 
 You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` also needs [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
-echo "ANTHROPIC_API_KEY=your-key" > .env
-uv run --env-file .env 1_model_interface.py     # or any step: 2_input.py, 3_output.py, 4_control_flow.py
-uv run --env-file .env harness.py               # the whole harness: chat, /q to quit
-uv run --env-file .env harness_production.py    # ready to leave alone
-./eval.sh                                       # evaluate harness.py on the task set
-./eval.sh harness_production.py                 # evaluate the production harness
+export ANTHROPIC_API_KEY=your-key
+cd shop                               # the task's folder
+uv run ../1_model_interface.py        # or any step: ../2_input.py, ../3_output.py, ../4_control_flow.py
+uv run ../harness.py                  # the whole harness: chat, /q to quit
+uv run ../harness_production.py       # ready for production
+../eval.sh                            # evaluate harness.py on the task set
+../eval.sh harness_production.py      # evaluate the production harness
+git checkout .                        # put the bug back
 ```
 
 > [!WARNING]

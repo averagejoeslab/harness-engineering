@@ -1,9 +1,9 @@
 #!/bin/sh
 # Evaluation: tasks with known right answers, each run in a fresh copy of shop/, checked by what the agent did, not what it says.
-# ./eval.sh                          the harness from Building a Harness
-# ./eval.sh harness_production.py    the production harness (needs Docker)
+# ./eval.sh                          evaluates harness.py
+# ./eval.sh harness_production.py    evaluates the production harness (needs Docker)
 harness=${1:-harness.py}
-here=$(pwd)
+here=$(cd "$(dirname "$0")" && pwd)                     # the repo, wherever this is run from
 env=$([ -f "$here/.env" ] && echo --env-file "$here/.env")
 passed=0; total=0
 check() {                                                # $1: the request; $2: true only if it was done right
