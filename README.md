@@ -130,7 +130,7 @@ $ uv run 1_model_interface.py
 
 (shortened)
 
-It answered, but it can't see the project, and the question is written into the code. Nobody can ask it anything.
+That's the model interface: a request goes in, and the model's response comes back. Here the model asks to see the code and the test output, because it can't see the project. And the question is written into the code, so nobody can ask it anything else.
 
 ### 2. Let someone ask
 
