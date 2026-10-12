@@ -911,13 +911,14 @@ uv run ../harness_prod.py
 ```
 < From now on, write commit messages in lowercase, starting with "fix:". Remember that.
 $ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
-- commit messages: write in lowercase, starting with "fix:"
+- commit messages: write them in lowercase, starting with "fix:"
 EOF
 cat .harness/memory/memory.md
   run this? [y/N] y
   └ # Memory
-    - commit messages: write in lowercase, starting with "fix:"
-> Noted and saved. From now on, my commit messages will be in lowercase and start with "fix:".
+    - commit messages: write them in lowercase, starting with "fix:"
+> Noted. From now on I'll write commit messages in lowercase and start them with "fix:". I saved that to memory, so it will carry over to future sessions.
+<
 ```
 
 In a new session, give it the task and ask it to commit:
