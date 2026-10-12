@@ -16,9 +16,13 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 SHELL = "sh"                                             # safety: the shell inside the box
 tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: text, shown as it's written
-    if event.type == "text": print(event.text, end="", flush=True)
+def show(event):                                         # output: the model's words, after <, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "text": print("< ", end="")
+    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
+
+def nested(result):                                      # output: what a command printed, nested under it with |_
+    return "  |_ " + "\n     ".join(result.rstrip("\n").split("\n"))
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
@@ -35,7 +39,7 @@ def handle_output(output):                               # output: handles the m
             else:
                 result = "[refused: the person said no]"
                 record(cmd=cmd, refused=True)            # observability
-            print(result)
+            print(nested(result))
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
