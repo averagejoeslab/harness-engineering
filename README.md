@@ -470,7 +470,20 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Context is everything the model is shown with each request. In [`harness.py`](./harness.py) it has three parts: a self model, instructions, and the current inputs.
+Next in the flow is **context**, which assembles what the model is shown with each request. It has three parts:
+
+- **Self model:** who it is and what its body is: the computer and its shell, where and when it's working, and the harness's own code.
+- **Instructions:** how to act through that body. At their heart is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
+- **Current inputs:** the conversation so far. When it outgrows what the model can read, the older part is summarized.
+
+| | Operation | How it checks the result |
+|---|---|---|
+| 1 | Work on files and data directly, with commands and scripts | the exit code and the result |
+| 2 | Use the app's own interface: its command-line tool or API | ask the app for its state |
+| 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
+| 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
+
+The shop task only needs the first.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -485,43 +498,15 @@ Context is everything the model is shown with each request. In [`harness.py`](./
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Self model:** who it is and what its body is. The harness detects the computer and its shell, names that shell in the tool, and runs every command with it:
-
-```python
-SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
-tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
-```
-
-```python
-            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-```
-
-```python
-MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
-```
-
-It also shows the model the harness's own code, so it knows how it works:
-
-```python
-def mechanics():                                         # self model: this file, with the instructions left out
-    return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
-```
-
-**Instructions:** how to act through that body. At their heart is an order of operations: use the most precise operation that can reach the target, and fall back only when it can't.
-
-| | Operation | How it checks the result |
-|---|---|---|
-| 1 | Work on files and data directly, with commands and scripts | the exit code and the result |
-| 2 | Use the app's own interface: its command-line tool or API | ask the app for its state |
-| 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
-| 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
-
-Success is what it reads back, not what it expected. The shop task only needs the first. Here are the self model and instructions in full:
-
-<details>
-<summary>The harness's self model and instructions</summary>
+In [`harness.py`](./harness.py), `system()`, `assemble_context()` and `compact()` are added:
 
 ````python
+# ── context ─────────────────────────────────────────────────────────────────
+MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
+
+def mechanics():                                         # self model: this file, with the instructions left out
+    return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
+
 def system():                                            # self model and instructions
     return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Self Model
 
@@ -564,13 +549,7 @@ This code is your harness. Its instructions are left out below, because they're 
 
 def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
     return {"system": system(), "tools": tools, "messages": messages}
-````
 
-</details>
-
-**Current inputs:** the conversation so far, including what each command printed, sent in full with every request. When it outgrows what the model can read, the API rejects the request, and the harness asks the model to summarize the older part:
-
-```python
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
     if drop > len(turns): sys.exit("[the conversation can't be summarized small enough]")
@@ -578,18 +557,17 @@ def compact(messages, drop):                             # current inputs: too l
     summary = request_response(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
     gist = next((b.text for b in summary.content if b.type == "text"), "")
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
-```
+````
 
-`assemble_context()` puts the three together for every request:
-
-```python
-def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
-    return {"system": system(), "tools": tools, "messages": messages}
-```
-
-And `control_flow()` sends what it assembles, calling `compact()` when a request is too long:
+Output and control flow change to use it. Output names the computer's own shell in the tool and runs every command with it. Control flow sends what context assembles, and calls `compact()` when a request is too long:
 
 ```python
+SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
+tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+
+# ── control flow ────────────────────────────────────────────────────────────
+def control_flow():                                      # control flow: defines the shape of the loop
     messages, drop = [{"role": "user", "content": capture_input()}], 0   # current inputs: the conversation so far
     while True:
         try:
@@ -599,9 +577,18 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
             if "prompt is too long" not in str(e): raise
             drop += 1
             continue
+        messages.append({"role": "assistant", "content": output})
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            messages.append({"role": "user", "content": results})
+            continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
+        messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
+
+control_flow()
 ```
 
-Now ask it who it is:
+We run it and ask who it is:
 
 ```bash
 uv run ../harness.py
@@ -629,11 +616,11 @@ $ pwd; hostname; uname -sr; ls
 
 It ran one command, to look at the folder, not to find out what it is. It knows it's an agent, that its body is a shell, and which model it thinks with, because they're in what it's shown.
 
-That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the task, knows what it is and how to use its body, and keeps going however long the session runs.
+That's all five primitives, and [`harness.py`](./harness.py) is a complete harness. What it lacks is proof: we've seen it do one task, once. Checking that is next.
 
 ## Evaluating the Harness
 
-It did the task once. Will it do it again, or do a different one? Any change can change what the agent does: its instructions, its model, its tools. So we give it tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
+Will it do the task again, or a different one? Any change can change what the agent does: its instructions, its model, its tools. So we give it tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
 
 | Task | Passes when |
 |---|---|
