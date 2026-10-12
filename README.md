@@ -471,11 +471,10 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Next in the flow is **context**, which assembles what the model is shown with each request. It has three parts:
+Next in the flow is **context**, which assembles what the model is shown with each request. It has two parts:
 
-- **Self model:** who it is and what its body is: the computer and its shell, where and when it's working, and the harness's own code.
-- **Instructions:** how to act through that body. At their heart is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
-- **Current inputs:** the conversation so far. When it outgrows what the model can read, the older part is summarized.
+- **Self model**, sent as the system prompt. Its **mind**: who it is, the model it thinks with, its loop, the date, and how carefully to change things. Its **body**: the computer and its shell, where it's working, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
+- **Current inputs**, sent as the messages: what you typed, each command the model asked for, and what it printed. When they outgrow what the model can read, the older part is summarized.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -505,23 +504,27 @@ In [`harness.py`](./harness.py), `system()`, `assemble_context()` and `compact()
 # ── context ─────────────────────────────────────────────────────────────────
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
 
-def mechanics():                                         # self model: this file, with the instructions left out
+def mechanics():                                         # self model: this file, with the self model left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 
-def system():                                            # self model and instructions
+def system():                                            # self model: mind and body
     return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Self Model
 
+## Mind
+
 **Identity:** You are an agent, working for the person who messages you.
-**Mind:** this model. You think within what you're shown each time: this self model, your instructions, and this session's messages. When the messages grow too long, the older part is summarized.
-**Body:** the shell, {SHELL}, on {MACHINE}. It's your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
-**Where:** {os.getcwd()}
-**When:** {datetime.date.today()}
+**Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized.
 **Loop:** observe → think → act → repeat.
-**How you work:** your harness's code is at the end.
+**When:** {datetime.date.today()}
+**Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
 
-# Instructions
+## Body
 
-## Order of operations
+**Shell:** {SHELL}, on {MACHINE}. It's your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
+**Where:** {os.getcwd()}
+**Harness:** the code that connects your mind to your shell, at the end.
+
+### Order of operations
 
 Choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
 
@@ -532,23 +535,19 @@ Choose the most precise operation that can reach the target, and read the result
 
 What you read back, not what you expected, decides whether it worked. If you don't have a tool for an operation, find or install one.
 
-## Each call
+### Each call
 
 One call can do several things: independent steps together, dependent ones in order, in your shell's own syntax. Keep calls focused, so their results stay small.
 
-## Changes
+### Harness
 
-Reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
-
-# How you work
-
-This code is your harness. Its instructions are left out below, because they're what you're reading.
+This code is your harness. Its self model is left out below, because it's what you're reading.
 
 ```python
 {mechanics()}
 ```"""}]
 
-def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+def assemble_context(messages):                          # context: the self model as the system prompt, the current inputs as the messages
     return {"system": system(), "tools": tools, "messages": messages}
 
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
@@ -597,22 +596,21 @@ uv run ../harness.py
 
 ```
 < Who are you, and where are you working?
-$ pwd; hostname; uname -sr; ls
+$ pwd; ls -la; uname -sr
   └ /home/user/harness-engineering/shop
-    vm
+    total 20
+    drwxr-xr-x 3 root root 4096 Oct 12 03:39 .
+    drwxr-xr-x 6 root root 4096 Oct 12 03:44 ..
+    drwxr-xr-x 2 root root 4096 Oct 12 03:38 __pycache__
+    -rw-r--r-- 1 root root  216 Oct 12 03:39 prices.py
+    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
     Linux 6.18.44-fc-v114
-    __pycache__
-    prices.py
-    test_prices.py
-> I'm an agent that works for whoever messages me, which at the moment is you. I think with a language model (the harness is set to `claude-sonnet-5-5`). I act through a bash shell, which is my only tool. With it I can work with files, run programs, reach the network and operate the desktop.
+> I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model. A small harness connects the model to a bash shell, and the shell is the only way I can look at or change anything on this machine. I can work with files, run programs, use the network and so on. Reading is always safe, so I do that freely. For anything that changes things, I go one step at a time and check the result. If something can't be undone, I ask you first. I never print passwords or keys.
   
-  I'm working in `/home/user/harness-engineering/shop`, on a Linux machine named `vm` running kernel 6.18.44 (x86_64). The directory holds:
-  - `prices.py`
-  - `test_prices.py`
-  - `__pycache__/`
+  I'm working in `/home/user/harness-engineering/shop`, on a Linux machine (kernel 6.18.44, x86_64). Today is 2026-10-12. The directory is small. It holds `prices.py`, `test_prices.py` and a `__pycache__` folder. It looks like a small Python project with a test file.
   
-  It looks like a small Python project with a test file. Tell me what you'd like done with it.
-< 
+  I haven't opened either file yet. Tell me what you'd like done here.
+<
 ```
 
 It doesn't have to go looking to find out what it is. It knows it's an agent, that its body is a shell, and where it's working, because they're in what it's shown.
@@ -750,14 +748,14 @@ def add(messages, message):                              # persistence: one mess
 
 The model decides what's worth keeping and asks for the command that writes it. Output runs it like any other.
 
-**Context** grows to match. The self model's mind notes the diary, and it gains a line about memory:
+**Context** grows to match. The mind notes the diary, and gains a line about memory:
 
 ```
-**Mind:** this model. You think within what you're shown each time: this self model, your instructions, and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
+**Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
 **Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands.
 ```
 
-The instructions gain how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. The harness lists the how-tos on every request, so the model knows what it can already do:
+The body gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. The harness lists the how-tos on every request, so the model knows what it can already do:
 
 ```python
 def skills():                                            # persistence: an index of how-tos, built from each one's header
@@ -770,14 +768,14 @@ def skills():                                            # persistence: an index
 ```
 
 <details>
-<summary>What the instructions gain: memory, in full</summary>
+<summary>What the body gains: memory, in full</summary>
 
 ````
-## Memory
+### Memory
 
 Beyond your mind you have three memories: stores in the world that persist across sessions, reached with your body. Each has a format contract; the contract is what makes it queryable.
 
-### Semantic memory — facts that last
+#### Semantic memory — facts that last
 
 **Store:** `.harness/memory/memory.md`, facts without time: each line is what is true now about a subject. When a fact was learned is episodic, not semantic.
 
@@ -807,7 +805,7 @@ Read moves:
 
 Rules: one fact per line; don't write what is already there; when a fact changes, replace it rather than adding a contradiction.
 
-### Procedural memory — how to do things
+#### Procedural memory — how to do things
 
 **Store:** `.harness/skills/`, one Markdown file per skill, named `<name>.md`.
 
@@ -846,7 +844,7 @@ Read moves:
 
 Rules: one skill per file; if a skill turns out wrong or a request changes it, rewrite it in place.
 
-### Episodic memory — what happened
+#### Episodic memory — what happened
 
 **Store:** `.harness/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
 
@@ -868,7 +866,7 @@ Read moves (leave {EPISODE} out; lines are long, so cut them):
 
 Rules: never edit these files; never print a whole file.
 
-### Across memories
+#### Across memories
 
 Recall ladder: go from the most distilled store to the most complete — semantic, then procedural, then episodic — and stop as soon as you have what you need.
 
@@ -1174,10 +1172,10 @@ tools = [{"name": "shell", "description": "Run a command in sh, inside a contain
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-The self model's body, and the order of operations, now read:
+The body, and its order of operations, now read:
 
 ```
-**Body:** the shell, {SHELL}, on {MACHINE}. It's your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
+**Shell:** {SHELL}, on {MACHINE}. It's your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
 
 1. **Files and data, directly:** commands, pipes and scripts. Read back: the exit code and the result.
 2. **The app's own interface:** its command-line tool or API. Read back: ask the app for its state.
@@ -1306,7 +1304,7 @@ $ sleep 100
 Every request resends the whole conversation. Now `assemble_context()` asks the API to keep what it has already processed, so each request pays full price only for what's new:
 
 ```python
-def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+def assemble_context(messages):                          # context: the self model as the system prompt, the current inputs as the messages
     return {"system": system(), "tools": tools, "messages": messages,
             "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
