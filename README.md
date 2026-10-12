@@ -617,20 +617,20 @@ uv run ../harness.py
 
 ```
 < Who are you, and where are you working?
-$ pwd; ls -la; uname -sr
+$ pwd; ls -la
   └ /home/user/harness-engineering/shop
-    total 20
-    drwxr-xr-x 3 root root 4096 Oct 12 03:39 .
+    total 16
+    drwxr-xr-x 2 root root 4096 Oct 12 04:24 .
     drwxr-xr-x 6 root root 4096 Oct 12 03:44 ..
-    drwxr-xr-x 2 root root 4096 Oct 12 03:38 __pycache__
     -rw-r--r-- 1 root root  216 Oct 12 03:39 prices.py
     -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-    Linux 6.18.44-fc-v114
-> I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model. A small harness connects the model to a bash shell, and the shell is the only way I can look at or change anything on this machine. I can work with files, run programs, use the network and so on. Reading is always safe, so I do that freely. For anything that changes things, I go one step at a time and check the result. If something can't be undone, I ask you first. I never print passwords or keys.
+> I'm an agent that works for whoever messages me. I act through a bash shell on a Linux machine (kernel 6.18.44, x86_64). I can read and change files, run programs, and use the network.
   
-  I'm working in `/home/user/harness-engineering/shop`, on a Linux machine (kernel 6.18.44, x86_64). Today is 2026-10-12. The directory is small. It holds `prices.py`, `test_prices.py` and a `__pycache__` folder. It looks like a small Python project with a test file.
+  I'm working in `/home/user/harness-engineering/shop`. It's a small directory with two files:
+  - `prices.py`
+  - `test_prices.py`
   
-  I haven't opened either file yet. Tell me what you'd like done here.
+  I haven't opened either file yet. I can read them or run the tests if you'd like.
 <
 ```
 
