@@ -13,7 +13,7 @@ def call(each=lambda event: None, **request):            # model interface: the 
         return stream.get_final_message()
 
 # ── output: the one tool ────────────────────────────────────────────────────
-tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
 # ── input ───────────────────────────────────────────────────────────────────
 def read(prompt):                                        # input: from a person

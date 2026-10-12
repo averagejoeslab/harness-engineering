@@ -38,4 +38,6 @@ fresh; { printf '%s\n' "$ASK"; sleep 12; printf 'y\n'; sleep 600; } | timeout -s
 docker ps -aq --filter name=harness- | xargs -r docker rm -f > /dev/null
 echo "--- p_stopped"; cat "$out/p_stopped.txt"
 ANSWERS='y\ny\ny\ny\n/q\n' run p_resume harness_production.py
-cd "$here" && echo '$ ./eval.sh' > "$out/p_eval.txt" && ./eval.sh >> "$out/p_eval.txt" 2>&1; echo "--- p_eval"; cat "$out/p_eval.txt"
+# evaluation, on each harness
+cd "$here" && echo '$ ./eval.sh' > "$out/eval.txt" && ./eval.sh >> "$out/eval.txt" 2>&1; echo "--- eval"; cat "$out/eval.txt"
+cd "$here" && echo '$ ./eval.sh harness_production.py' > "$out/p_eval.txt" && ./eval.sh harness_production.py >> "$out/p_eval.txt" 2>&1; echo "--- p_eval"; cat "$out/p_eval.txt"

@@ -106,25 +106,9 @@ print(output.model_dump_json(indent=2))
 
 `call()` is the whole model interface. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
 
-```
-$ uv run 1_model_interface.py
-{
-  "content": [
-    {
-      "text": "I can't see your code or test output in this conversation, so I can't tell yet why the tests are failing. To track it down, I need a few things: ...",
-      "type": "text"
-    }
-  ],
-  "stop_reason": "end_turn",
-  "usage": {
-    "input_tokens": 24,
-    "output_tokens": 449,
-    ...
-  }
-}
-```
+In the runs below, the first `$` line is how it was started. After that, a `$` line is a command the agent ran, followed by what it printed.
 
-(shortened)
+> **Run, to be recorded:** the model's reply to the job, printed raw. It can't see the project, so it can't help.
 
 It answered. But it can't see the project, and the question is written into the code. Nobody can ask it anything else.
 
@@ -161,34 +145,13 @@ output = call(max_tokens=16384, tools=tools, messages=[{"role": "user", "content
 print(output.model_dump_json(indent=2))
 ```
 
-We also include a description of one tool, `bash`, in what the model is shown, so it knows it can ask to run a command:
+We also include a description of one tool, `shell`, in what the model is shown, so it knows it can ask to run a command:
 
 ```python
-tools = [{"name": "bash", "description": "Run shell command — the whole system is in reach", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
-```
-$ uv run 2_input.py "The tests are failing. Find out why and fix it."
-{
-  "content": [
-    {
-      "text": "Let me start by looking at the project and running the tests.",
-      "type": "text"
-    },
-    {
-      "input": {
-        "cmd": "pwd; ls -la; git status 2>/dev/null | head -20"
-      },
-      "name": "bash",
-      "type": "tool_use"
-    }
-  ],
-  "stop_reason": "tool_use",
-  ...
-}
-```
-
-(shortened)
+> **Run, to be recorded:** the reply to the job: a request to run a command, such as looking at the files. Nothing runs it.
 
 Now it asks to look. But nothing carries out what it asks.
 
@@ -227,13 +190,7 @@ for block in output:                                     # output: run tool requ
 
 What a command prints comes back as input, this time from the world, not from you.
 
-```
-$ uv run 3_output.py "The tests are failing. Find out why and fix it."
-$ pwd; ls; git status --short | head
-/tmp/shop
-prices.py
-test_prices.py
-```
+> **Run, to be recorded:** the agent runs its first command and prints what it found, then stops.
 
 It acted. But what the command printed never reaches the model, so it can't take the next step.
 
@@ -278,48 +235,13 @@ while True:
     messages.append({"role": "user", "content": input})
 ```
 
-```
-$ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
-$ pwd; ls -la; git status 2>/dev/null | head -20
-...
-$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
-...
-$ python -m unittest -v 2>&1 | tail -20; git log --oneline | head
-...
-AssertionError: 15 != 22.5
-...
-$ sed -i 's|return round(subtotal - discount, 2)|return round(subtotal * (1 - discount / 100), 2)|' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
-...
-OK
-
-**Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, even though its docstring and the test treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 25 − 10 = 15. The test expected 22.5, which is 10% off.
-
-**Fix:** I changed the last line of `total()` to `round(subtotal * (1 - discount / 100), 2)`.
-```
-
-(shortened)
+> **Run, to be recorded:** the agent looks at the files, runs the tests, finds the discount is taken off as an amount instead of a percentage, fixes it, and runs the tests again. They pass.
 
 The job is done. **This is an agent:** it keeps going until the job is finished, then hands back to you.
 
 But it doesn't know what it is, what its body is, or how best to use it. Ask it, and it has to go looking:
 
-```
-$ uv run 4_control_flow.py "Who are you, and where are you working?"
-I'm an AI assistant with a shell tool. I'll check the environment so I can tell you where I'm working.
-$ pwd
-...
-$ whoami; hostname
-...
-$ uname -a; cat /etc/os-release 2>/dev/null | head -n 3
-...
-I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, and managing a system.
-
-I'm working in this environment:
-- **Working directory:** `/tmp/shop`
-...
-```
-
-(shortened)
+> **Run, to be recorded:** ask step 4 "Who are you, and where are you working?" It has to run commands to find out, and still can't say who it is.
 
 The last primitive, **context**, fixes that.
 
@@ -340,7 +262,7 @@ Context is everything the model is shown with each request. We give it three thi
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool is now named for that shell, and output runs every command with it:
+**A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool's description now names that shell, and output runs every command with it:
 
 ```python
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # the shell this computer uses
@@ -450,9 +372,57 @@ while True:
 
 That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is and how to use its body, and keeps going however long the session runs.
 
-## Would you leave it alone?
+## Evaluating the Harness
 
-The agent works. But when a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
+It did the job once. Would it do it again, or do a different job? Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a set of tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
+
+| Task | Passes when |
+|---|---|
+| Fix the failing test | the tests pass, and the test file is unchanged |
+| Add a `count()` function | it returns the right numbers |
+| Write the names of the `.py` files into a file | the file lists exactly them |
+| Answer a question without changing anything | nothing changed, and the answer is right |
+| Name the operating system, into a file | the file names it |
+
+[`eval.sh`](./eval.sh) runs them on any harness file, `harness.py` by default:
+
+```sh
+#!/bin/sh
+# Evaluation: tasks with known right answers, each run in a fresh copy of shop/, checked by what the agent did, not what it says.
+# ./eval.sh                          the harness from Building a Harness
+# ./eval.sh harness_production.py    the production harness (needs Docker)
+harness=${1:-harness.py}
+here=$(pwd)
+env=$([ -f "$here/.env" ] && echo --env-file "$here/.env")
+passed=0; total=0
+check() {                                                # $1: the request; $2: true only if it was done right
+  cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
+  said=$(yes | uv run -q $env "$here/$harness" "$1" 2>/dev/null); export said
+  total=$((total + 1))
+  if sh -c "$2" > /dev/null 2>&1; then passed=$((passed + 1)); echo "PASS  $1"; else echo "FAIL  $1"; fi
+  cd "$here"
+}
+unchanged='test -z "$(git status --porcelain | grep -v -e __pycache__ -e .harness)"'
+check "The tests are failing. Find out why and fix it." \
+      'python3 -m unittest -q && git diff --quiet HEAD -- test_prices.py'
+check "Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities." \
+      'python3 -c "from prices import count; assert count([(10, 2), (5, 1)]) == 3 and count([]) == 0"'
+check "Write the names of the .py files in this folder, one per line, sorted, into files.txt." \
+      'printf "prices.py\ntest_prices.py\n" | cmp -s - files.txt'
+check "What does total() return for an empty basket? Don't change anything." \
+      "$unchanged"' && echo "$said" | grep -qw 0'
+check "Which operating system is this computer running? Write just its name into os.txt." \
+      'grep -qi "$(uname -s)" os.txt'
+echo "$passed/$total passed"
+```
+
+> **Run, to be recorded:** eval on harness.py: each task, PASS or FAIL, and the score.
+
+Run it after every change. A task that fails tells you where to look.
+
+## Getting it Ready for Production
+
+The agent works, and passes its evaluation. But would you leave it alone? When a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
 
 Getting it ready to leave alone means asking six questions, of every primitive:
 
@@ -663,33 +633,7 @@ def resume():                                            # persistence: carry on
     return messages
 ```
 
-```
-$ uv run harness_production.py
-> The tests are failing. Find out why and fix it.
-$ cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
-  run this? [y/N] y
-prices.py
-test_prices.py
-
-$ cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
-  run this? [y/N]
-Killed
-
-$ uv run harness_production.py
-continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
-$ cd /tmp/shop && cat prices.py test_prices.py
-  run this? [y/N] y
-...
-The docstring says the discount is a percentage, but the code subtracts it as a flat amount. I'll fix the code.
-$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -q 2>&1 | tail -5
-  run this? [y/N] y
-...
-OK
-
-The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount, ...
-```
-
-(shortened)
+> **Run, to be recorded:** the agent is stopped in the middle of the job, then started again. It offers to continue, checks what happened, and finishes.
 
 ### What if it does harm?
 
@@ -721,22 +665,7 @@ SHELL = "sh"                                             # safety: the shell ins
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-```
-$ uv run harness_production.py "Delete test_prices.py, it keeps failing."
-$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; grep -i "test_prices\|delete" .harness/memory/memory.md 2>/dev/null
-  run this? [y/N] y
-...
-./test_prices.py
-
-$ cd /tmp/shop && rm test_prices.py && git status --short
-  run this? [y/N] n
-[refused: the person said no]
-You said no to the delete command, so I haven't removed `test_prices.py`. It's still in `/tmp/shop`, and git is tracking it, so `git checkout` can restore it if you change your mind.
-
-I can go ahead with the delete if you'd like. I could also look at why the test fails first. ...
-```
-
-(shortened)
+> **Run, to be recorded:** "Delete test_prices.py, it keeps failing." You say yes to looking, and no to deleting. the agent tells you it didn't delete it.
 
 ### What did it actually do?
 
@@ -749,15 +678,7 @@ def record(**step):                                      # observability: one li
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
-```
-{"time": "2026-10-11T20:36:40", "tokens_in": 4, "written": 6566, "cached": 0, "tokens_out": 98}
-{"time": "2026-10-11T20:36:40", "cmd": "cd /tmp/shop && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls", "exit": 0}
-{"time": "2026-10-11T20:36:41", "tokens_in": 2, "written": 117, "cached": 6566, "tokens_out": 89}
-{"time": "2026-10-11T20:36:43", "cmd": "cd /tmp/shop && cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30", "exit": 0}
-{"time": "2026-10-11T20:36:44", "tokens_in": 2, "written": 330, "cached": 6683, "tokens_out": 142}
-{"time": "2026-10-11T20:36:46", "cmd": "cd /tmp/shop && sed -i 's|subtotal - discount|subtotal * (1 - discount / 100)|' prices.py && python -m unittest -v 2>&1 | tail -8", "exit": 0}
-{"time": "2026-10-11T20:36:47", "tokens_in": 2, "written": 244, "cached": 7013, "tokens_out": 135}
-```
+> **Run, to be recorded:** the record of the job: how much each request cost, and each command and how it ended.
 
 Each request's line says how many tokens went in and came out. Each command's line says what ran and how it ended (`exit` 0 means it worked).
 
@@ -787,16 +708,7 @@ And a command is stopped after a minute:
             input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
-```
-$ uv run harness_production.py "Run sleep 100 as a single command, then tell me it finished."
-$ sleep 100
-  run this? [y/N] y
-(exit 124)
-[stopped: it ran for over a minute]
-`sleep 100` did not finish. The harness stops any command after 60 seconds, so it was killed with exit code 124 before the 100 seconds were up.
-
-I can run `sleep 55` instead, which fits within the limit. I could also run several shorter sleeps back to back, but each one needs its own approval. Do you want either of those?
-```
+> **Run, to be recorded:** "Run sleep 100, then tell me it finished." The command is stopped after a minute, and the agent says so.
 
 ### Why is it slow or costly?
 
@@ -811,20 +723,14 @@ Look back at the record. The first request paid to store about 6,500 tokens (`wr
 
 ### How do we know it still works?
 
-Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a job with a known right answer, and check what it did, not what it says. [`eval.sh`](./eval.sh) runs the job on a fresh copy of `shop/`, then checks that the tests pass and that the agent didn't touch the test:
+Every concern above changed the harness, and any change can change what the agent does. The evaluation already answers this question: run the same tasks on the production harness.
 
-```sh
-#!/bin/sh
-# Evaluation: give the agent a task with a known right answer, then check the files, not what it says.
-here=$(pwd)
-cd "$(mktemp -d)" && cp "$here"/shop/*.py . && git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start
-yes | uv run -q $([ -f "$here/.env" ] && echo --env-file "$here/.env") "$here/harness_production.py" "The tests are failing. Find out why and fix it." > /dev/null
-python3 -m unittest -q 2>/dev/null && git diff --quiet HEAD -- test_prices.py && echo "PASS: the tests pass, and the test file is unchanged" || echo "FAIL"
-```
+> **Run, to be recorded:** eval on harness_production.py: each task, PASS or FAIL, and the score.
 
-```
-$ ./eval.sh
-PASS: the tests pass, and the test file is unchanged
+Two things let it run without anyone there. **Input** takes the request from the command line, and **control flow** runs it once and stops. `yes` answers every approval, so the box is what keeps it safe. And a request from the command line never offers to carry on an old session, so every task starts fresh:
+
+```python
+    if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
 ```
 
 Run it after every change.
@@ -841,20 +747,21 @@ You started with a model that could only predict the next token, and built a bod
 | Control flow | a way to keep going until the job is done |
 | Context | knowing what it is and how to use its body, and room to keep working |
 
-Then you made it ready to leave alone by asking six questions of every primitive, starting with what should outlast a session: its memory.
+Then you evaluated it against a set of tasks, and made it ready for production by asking six questions of every primitive, starting with what should outlast a session: its memory.
 
 That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built more carefully. Open any one of them and you'll find the same five.
 
 ## Try it yourself
 
-You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` and `eval.sh` also need [Docker](https://docs.docker.com/get-docker/).
+You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/). `harness_production.py` also needs [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
 echo "ANTHROPIC_API_KEY=your-key" > .env
 uv run --env-file .env 1_model_interface.py     # or any step: 2_input.py, 3_output.py, 4_control_flow.py
 uv run --env-file .env harness.py               # the whole harness: chat, /q to quit
 uv run --env-file .env harness_production.py    # ready to leave alone
-./eval.sh                                       # check it still works
+./eval.sh                                       # evaluate harness.py on the task set
+./eval.sh harness_production.py                 # evaluate the production harness
 ```
 
 > [!WARNING]
