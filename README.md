@@ -130,7 +130,7 @@ $ uv run 1_model_interface.py
 
 (shortened)
 
-That's the model interface: a request goes in, and the model's response comes back. Here the model asks to see the code and the test output, because it can't see the project. And the question is written into the code, so nobody can ask it anything else.
+Our code sent the job to the model through `request_response()` and printed the response it got back. The model replied in words: it can't see the project, so it asks for the code and the test output. The problem starts before the model, where the request comes from: it's written into the code, so nobody can ask anything else. That's the first part of the flow: input.
 
 ### 2. Let someone ask
 
