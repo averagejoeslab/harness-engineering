@@ -36,7 +36,7 @@ def capture_input():                                     # input: captures what 
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
-input = capture_input()                                  # input: what a person types while it runs
+message = capture_input()                                # input: what a person types while it runs
 
-output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": message}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet

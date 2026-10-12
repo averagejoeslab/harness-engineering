@@ -277,10 +277,10 @@ def capture_approval(question):                          # input: a yes or no fr
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
     messages = resume()                                  # persistence: an unfinished session comes back first
-    input = "" if messages else " ".join(sys.argv[1:]) or capture_input()
+    message = "" if messages else " ".join(sys.argv[1:]) or capture_input()
     start_box()                                          # safety: every command runs in the box
     drop = 0
-    if input: add(messages, {"role": "user", "content": input})
+    if message: add(messages, {"role": "user", "content": message})
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0

@@ -40,8 +40,8 @@ def capture_input():                                     # input: captures what 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    input = " ".join(sys.argv[1:]) or capture_input()
-    messages = [{"role": "user", "content": input}]
+    message = " ".join(sys.argv[1:]) or capture_input()
+    messages = [{"role": "user", "content": message}]
     while True:
         output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})

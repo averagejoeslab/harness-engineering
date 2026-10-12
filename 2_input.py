@@ -14,7 +14,7 @@ def capture_input():                                     # input: captures what 
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
-input = capture_input()                                  # input: what a person types while it runs
+message = capture_input()                                # input: what a person types while it runs
 
-output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": message}])
 print(output.model_dump_json(indent=2))

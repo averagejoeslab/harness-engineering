@@ -98,8 +98,8 @@ def capture_input():                                     # input: captures what 
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    input = " ".join(sys.argv[1:]) or capture_input()
-    messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+    message = " ".join(sys.argv[1:]) or capture_input()
+    messages, drop = [{"role": "user", "content": message}], 0   # current inputs: the conversation so far
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0

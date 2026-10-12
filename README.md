@@ -116,7 +116,8 @@ MODEL = "claude-sonnet-5-5"
 def request_response(**request):                         # model interface: requests a response from the model
     return client.messages.create(model=MODEL, **request)
 
-output = request_response(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
+message = "The tests are failing. Find out why and fix it."   # the request, hardcoded
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": message}])
 print(output.model_dump_json(indent=2))
 ```
 
@@ -164,7 +165,7 @@ Next in the flow is **input**, which captures what comes in. `capture_input()` r
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`2_input.py`](./2_input.py), `capture_input()` is added:
+In [`2_input.py`](./2_input.py), `capture_input()` is added, and what it captures replaces the hardcoded message:
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
@@ -172,9 +173,9 @@ def capture_input():                                     # input: captures what 
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
-input = capture_input()                                  # input: what a person types while it runs
+message = capture_input()                                # input: what a person types while it runs
 
-output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": message}])
 print(output.model_dump_json(indent=2))
 ```
 
@@ -242,7 +243,7 @@ def handle_output(output):                               # output: handles the m
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
-output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": message}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
@@ -287,8 +288,8 @@ In [`4_control_flow.py`](./4_control_flow.py), `control_flow()` is added:
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
-    input = " ".join(sys.argv[1:]) or capture_input()
-    messages = [{"role": "user", "content": input}]
+    message = " ".join(sys.argv[1:]) or capture_input()
+    messages = [{"role": "user", "content": message}]
     while True:
         output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
@@ -461,7 +462,7 @@ def assemble_context(messages):                          # context: assembles wh
 And `control_flow()` sends what it assembles, calling `compact()` when a request is too long:
 
 ```python
-    messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+    messages, drop = [{"role": "user", "content": message}], 0   # current inputs: the conversation so far
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
