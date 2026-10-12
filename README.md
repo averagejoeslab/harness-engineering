@@ -1045,7 +1045,7 @@ $ cd .harness/episodes; tail -n 3 2026-10-12T03-27-56.jsonl | cut -c1-400; grep 
 <
 ```
 
-That leaves the task in progress. When the harness starts, **control flow** checks the diary for an unfinished session and offers to carry on. A command that was running may or may not have finished, so the model is told to check:
+A session can also end in the middle of a task. When the harness starts, **control flow** checks the diary for an unfinished session and offers to carry on. A command that was running may or may not have finished, so the model is told to check:
 
 ```python
 def resume():                                            # persistence: carry on a session that ended mid-task
@@ -1063,7 +1063,7 @@ def resume():                                            # persistence: carry on
     return messages
 ```
 
-We put the bug back, start the task, stop the harness partway through, and start it again:
+We put the bug back, start the task, press Ctrl-C at its second command, and start it again:
 
 ```bash
 git checkout .
