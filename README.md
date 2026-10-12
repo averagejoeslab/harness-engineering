@@ -1299,13 +1299,18 @@ uv run ../harness_prod.py
 
 ```
 < Run sleep 100 as a single command, then tell me it finished.
-> I'll run it as asked. Commands here are stopped after 60 seconds, so it may not get through all 100.
+∴ The harness has a 60-second timeout, so sleep 100 would get killed before finishing. I'll just run it as asked and report what actually happens.
+  
+  
+> I'll run it as asked. The harness stops any command after 60 seconds, so it may get cut off.
 $ sleep 100
   run this? [y/N] y
   └ (exit 124)
     [stopped: it ran for over a minute]
-> `sleep 100` didn't finish. The harness stopped it at the 60-second limit, and it exited with code 124, which means timeout. It got about 60 of the 100 seconds.
-  I can run `sleep 55` instead, which fits under the limit. I could also chain shorter sleeps across separate commands. Each one would be capped at 60 seconds, so that would take two calls.
+> `sleep 100` did not finish. The harness stopped it at its 60-second limit, and it exited with code 124 (timed out).
+  
+  A single command can't run 100 seconds here. I can split it into two shorter sleeps, such as `sleep 50` run twice. Or I can run it in the background and check on it later. Do you want either of those?
+<
 ```
 
 ### Why is it slow or costly?
