@@ -106,8 +106,6 @@ print(output.model_dump_json(indent=2))
 
 `request_response()` sends the model a request and returns its response. The response streams back a piece at a time, so a long one never times out. Every later step talks to the model through it.
 
-In the runs, the first `$` line starts the harness. Each later `$` line is a command the agent ran, followed by what it printed.
-
 ```
 $ uv run 1_model_interface.py
 {
@@ -230,7 +228,7 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world.
+`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world. From here on, a `$` line after the first is a command the agent ran, followed by what it printed.
 
 ```
 $ uv run 3_output.py "The tests are failing. Find out why and fix it."
