@@ -929,21 +929,71 @@ uv run ../harness_prod.py
 
 ```
 < The tests are failing. Find out why, fix it, and commit.
-$ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
+$ cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
   run this? [y/N] y
   └ # Memory
-    - commit messages: write in lowercase, starting with "fix:"
-    ...
-> The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
-$ cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; python -m unittest 2>&1 | tail -5; git add prices.py && git commit -qm "fix: apply discount as a percentage" && git log --oneline | head -2
+    - commit messages: write them in lowercase, starting with "fix:"
+    __pycache__
+    prices.py
+    test_prices.py
+    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
+    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
+    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+> Not a git repo. Let's look at the tests first.
+$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
   run this? [y/N] y
-  └ ...
+  └ def total(items, discount=0):
+        """Add up (price, quantity) pairs, then take off a percentage discount."""
+        subtotal = sum(price * quantity for price, quantity in items)
+        return round(subtotal - discount, 2)
+    import unittest
+    from prices import total
+    
+    
+    class TestTotal(unittest.TestCase):
+        def test_no_discount(self):
+            self.assertEqual(total([(10, 2), (5, 1)]), 25)
+    
+        def test_ten_percent_off(self):
+            self.assertEqual(total([(10, 2), (5, 1)], discount=10), 22.5)
+    
+    
+    if __name__ == "__main__":
+        unittest.main()
+    /usr/local/bin/python: No module named pytest
+> The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git -C . rev-parse --show-toplevel 2>&1 | head -1; ls -a
+  run this? [y/N] y
+  └ test_no_discount (test_prices.TestTotal.test_no_discount) ... ok
+    test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok
+    
+    ----------------------------------------------------------------------
+    Ran 2 tests in 0.000s
+    
     OK
-    30397e0 fix: apply discount as a percentage
-> ... I committed the change as `fix: apply discount as a percentage`, following your lowercase `fix:` convention.
+    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
+    .
+    ..
+    .harness
+    .pytest_cache
+    __pycache__
+    prices.py
+    test_prices.py
+∴ There's no git repo here, and initializing one is an assumption I shouldn't make silently since the real project root might actually be the parent directory instead. I'll ask the user before running git init.
+  
+  
+> I fixed the bug, but I haven't committed because this folder isn't a git repository.
+  
+  **Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test `test_ten_percent_off`, treat it as a percentage. With a discount of 10 on a subtotal of 25, it returned 15 instead of 22.5.
+  
+  **Fix:** the return line is now `round(subtotal * (1 - discount / 100), 2)`. Both tests pass when run with `python -m unittest`.
+  
+  **Commit:** there's no `.git` here or in any parent folder I can see. Should I run `git init` and make a first commit? If the repo lives somewhere else, tell me where. When I do commit, the message will follow your convention, lowercase and starting with `fix:`, for example `fix: apply discount as a percentage`.
+<
 ```
 
-(shortened)
+It read its facts before anything else, and fixed the bug. It couldn't commit: the box sees only `shop/`, and this repository's git history is in the folder above it. So it asks before creating one, and names the message it would use, following the rule it saved.
 
 Ask about the past:
 
