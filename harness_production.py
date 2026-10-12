@@ -7,7 +7,7 @@ from anthropic import Anthropic, BadRequestError
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic(max_retries=3)                        # resilience: retry a request that fails
 MODEL = "claude-sonnet-5-5"
-def call(each=lambda event: None, **request):            # model interface: the response streams back, and each piece goes to each()
+def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
     with client.messages.stream(model=MODEL, **request) as stream:
         for event in stream: each(event)
         return stream.get_final_message()
@@ -19,6 +19,25 @@ tools = [{"name": "shell", "description": "Run a command in sh, inside a contain
 def show(event):                                         # output: text, shown as it's written
     if event.type == "text": print(event.text, end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
+
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    results = []
+    for block in output:
+        if block.type == "tool_use":
+            cmd = block.input["cmd"]
+            print(f"$ {cmd}")
+            if capture_approval("  run this? [y/N] "):   # safety: nothing runs without a yes
+                done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+                result = done.stdout or f"(exit {done.returncode})"
+                if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
+                record(cmd=cmd, exit=done.returncode)    # observability
+            else:
+                result = "[refused: the person said no]"
+                record(cmd=cmd, refused=True)            # observability
+            print(result)
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+    return results
 
 # ── context ─────────────────────────────────────────────────────────────────
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
@@ -38,6 +57,7 @@ def skills():                                            # persistence: an index
         name, about = (re.search(rf"^{key}:\s*(.+)$", text, re.M) for key in ("name", "description"))
         index.append(f"- {name[1] if name else os.path.basename(path)}: {about[1] if about else '(no description)'} ({path})")
     return "\n".join(index) or "- (none yet)"
+
 
 def mechanics():                                         # self model: this file, with the instructions left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
@@ -191,11 +211,15 @@ This code is your harness. Its instructions are left out below, because they're 
 {mechanics()}
 ```"""}]
 
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages,
+            "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
+
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
     if drop > len(turns): sys.exit("[the conversation can't be summarized small enough]")
     keep = messages[turns[drop]:] if drop < len(turns) else [messages[turns[-1]]]
-    summary = call(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
+    summary = request_response(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
     gist = next((b.text for b in summary.content if b.type == "text"), "")
     return [{"role": "user", "content": f"[the earlier conversation, summarized; every message is in {EPISODE}] {gist}"}]   # persistence
 
@@ -206,7 +230,7 @@ def resume():                                            # persistence: carry on
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or not yes(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
+    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
     EPISODE = episodes[-1]                               # carry on in the same file
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(messages, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
@@ -227,64 +251,45 @@ def start_box():                                         # safety: a container t
                     "-e", "HOME=/tmp", "-v", f"{here}:{here}", "-w", here, "python:3.13", "sleep", "infinity"], check=True, capture_output=True)
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 
-
 # ── input ───────────────────────────────────────────────────────────────────
-def read(prompt):                                        # input: from a person
+def capture_input(prompt="> "):                          # input: captures what a person types
     while True:
         print(prompt, end="", flush=True)
         line = sys.stdin.readline()
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-def yes(question):                                       # input: a yes or no from a person; anything else is no
+def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
 messages = resume()                                      # persistence: an unfinished session comes back first
-input = "" if messages else " ".join(sys.argv[1:]) or read("> ")
+input = "" if messages else " ".join(sys.argv[1:]) or capture_input()   # input: from the command line, or from a person
 if input == "/q": sys.exit()
-chat = len(sys.argv) < 2
 
 # ── control flow ────────────────────────────────────────────────────────────
-start_box()
-drop = 0
-if input: add(messages, {"role": "user", "content": input})
+def control_flow(messages, input):                       # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2
+    start_box()                                          # safety: every command runs in the box
+    drop = 0
+    if input: add(messages, {"role": "user", "content": input})
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            response = request_response(show, max_tokens=16384, **assemble_context(messages))
+            output = response.content
+            record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
+                   cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+        add(messages, {"role": "assistant", "content": output})   # persistence: on disk before any command runs
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            add(messages, {"role": "user", "content": results})
+            continue
+        if not chat or (input := capture_input("\n> ")) == "/q":
+            break                                        # stop: a request from the command line is done, or /q
+        add(messages, {"role": "user", "content": input})   # hand back: the person's next message
 
-while True:
-    try:
-        if drop:
-            messages, drop = compact(messages, drop), 0
-        response = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages,
-                        cache_control={"type": "ephemeral"})   # performance: the conversation is cached too, not just the prompt
-        output = response.content
-        record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
-               cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
-    except BadRequestError as e:
-        if "prompt is too long" not in str(e): raise
-        drop += 1
-        continue
-
-    add(messages, {"role": "assistant", "content": output})   # on disk before any tool runs
-
-    input = []
-    for block in output:                                 # output: run tool requests
-        if block.type == "tool_use":
-            cmd = block.input["cmd"]
-            print(f"$ {cmd}")
-            if yes("  run this? [y/N] "):                # safety: nothing runs without a yes
-                done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-                result = done.stdout or f"(exit {done.returncode})"
-                if done.returncode == 124: result += "\n[stopped: it ran for over a minute]"
-                record(cmd=cmd, exit=done.returncode)    # observability
-            else:
-                result = "[refused: the person said no]"
-                record(cmd=cmd, refused=True)            # observability
-            print(result)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
-
-    if input:
-        add(messages, {"role": "user", "content": input})
-        continue
-    if not chat or (input := read("\n> ")) == "/q":
-        break
-    add(messages, {"role": "user", "content": input})
+control_flow(messages, input)

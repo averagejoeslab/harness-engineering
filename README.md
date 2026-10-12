@@ -95,16 +95,16 @@ We have a model, and no way to talk to it. So the first primitive is the **model
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def call(each=lambda event: None, **request):            # model interface: the response streams back, and each piece goes to each()
+def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
     with client.messages.stream(model=MODEL, **request) as stream:
         for event in stream: each(event)
         return stream.get_final_message()
 
-output = call(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
+output = request_response(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
 print(output.model_dump_json(indent=2))
 ```
 
-`call()` is the whole model interface. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
+`request_response()` is the whole model interface: it requests a response from the model. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
 
 In the runs below, the first `$` line is how it was started. After that, a `$` line is a command the agent ran, followed by what it printed.
 
@@ -131,19 +131,21 @@ So we add **input**: read what you type, or what you put on the command line, an
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
-def read(prompt):                                        # input: from a person
+def capture_input(prompt="> "):                          # input: captures what a person types
     while True:
         print(prompt, end="", flush=True)
         line = sys.stdin.readline()
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or read("> ")
+input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
 if input == "/q": sys.exit()
 
-output = call(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
 ```
+
+`capture_input()` captures what a person types. The request can also come straight from the command line.
 
 We also include a description of one tool, `shell`, in what the model is shown, so it knows it can ask to run a command:
 
@@ -176,19 +178,24 @@ So we add **output**: show its words as they arrive, and run the commands it ask
 def show(event):                                         # output: text, shown as it's written
     if event.type == "text": print(event.text, end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
+
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    results = []
+    for block in output:
+        if block.type == "tool_use":
+            print(f"$ {block.input['cmd']}")
+            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            print(done.stdout)
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
+    return results
 ```
 
 ```python
-input = []
-for block in output:                                     # output: run tool requests
-    if block.type == "tool_use":
-        print(f"$ {block.input['cmd']}")
-        done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-        print(done.stdout)
-        input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
+output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-What a command prints comes back as input, this time from the world, not from you.
+`handle_output()` handles the model's outputs: `show()` prints its words as they stream in, and each command it asks for is run. What a command prints comes back as input, this time from the world, not from you.
 
 > **Run, to be recorded:** the agent runs its first command and prints what it found, then stops.
 
@@ -213,27 +220,24 @@ So we add **control flow**: when a command ran, send what it printed back to the
 
 ```python
 # ── control flow ────────────────────────────────────────────────────────────
-messages = [{"role": "user", "content": input}]
+def control_flow(input):                                 # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2
+    messages = [{"role": "user", "content": input}]
+    while True:
+        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
+        messages.append({"role": "assistant", "content": output})
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            messages.append({"role": "user", "content": results})
+            continue
+        if not chat or (input := capture_input("\n> ")) == "/q":
+            break                                        # stop: a request from the command line is done, or /q
+        messages.append({"role": "user", "content": input})   # hand back: the person's next message
 
-while True:
-    output = call(show, max_tokens=16384, tools=tools, messages=messages).content
-    messages.append({"role": "assistant", "content": output})
-
-    input = []
-    for block in output:                                 # output: run tool requests
-        if block.type == "tool_use":
-            print(f"$ {block.input['cmd']}")
-            done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-            print(done.stdout)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
-
-    if input:
-        messages.append({"role": "user", "content": input})
-        continue
-    if not chat or (input := read("\n> ")) == "/q":
-        break
-    messages.append({"role": "user", "content": input})
+control_flow(input)
 ```
+
+`control_flow()` defines the shape of the loop: go again while commands run, hand back to you when the model is done, and stop on `/q` or when a request from the command line is finished.
 
 > **Run, to be recorded:** the agent looks at the files, runs the tests, finds the discount is taken off as an amount instead of a percentage, fixes it, and runs the tests again. They pass.
 
@@ -265,7 +269,7 @@ Context is everything the model is shown with each request. We give it three thi
 **A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool's description now names that shell, and output runs every command with it:
 
 ```python
-SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # the shell this computer uses
+SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
@@ -336,6 +340,9 @@ This code is your harness. Its instructions are left out below, because they're 
 ```python
 {mechanics()}
 ```"""}]
+
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages}
 ````
 
 </details>
@@ -347,25 +354,30 @@ def compact(messages, drop):                             # current inputs: too l
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
     if drop > len(turns): sys.exit("[the conversation can't be summarized small enough]")
     keep = messages[turns[drop]:] if drop < len(turns) else [messages[turns[-1]]]
-    summary = call(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
+    summary = request_response(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
     gist = next((b.text for b in summary.content if b.type == "text"), "")
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ```
 
-The loop sends all three with every request, and calls `compact()` when one is rejected as too long:
+`assemble_context()` puts all three together for every request:
 
 ```python
-messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages}
+```
 
-while True:
-    try:
-        if drop:
-            messages, drop = compact(messages, drop), 0
-        output = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages).content
-    except BadRequestError as e:
-        if "prompt is too long" not in str(e): raise
-        drop += 1
-        continue
+And `control_flow()` now sends what it assembles, and calls `compact()` when a request is rejected as too long:
+
+```python
+    messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
 ```
 
 > **Run, to be recorded:** asked who it is and where it's working, it names its shell and its system, without running a command.
@@ -625,7 +637,7 @@ def resume():                                            # persistence: carry on
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
-    if not unfinished or not yes(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
+    if not unfinished or not capture_approval(f"continue the unfinished session {messages[0]['content'][:50]!r}? [y/N] "): return []
     EPISODE = episodes[-1]                               # carry on in the same file
     if last["role"] == "assistant":                      # it stopped while commands were running
         add(messages, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": block["id"], "is_error": True,
@@ -647,10 +659,10 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 ```
 
-And nothing runs without your yes:
+And nothing runs without your yes. **Input** asks for it, and `handle_output()` runs a command only if you say yes:
 
 ```python
-def yes(question):                                       # input: a yes or no from a person; anything else is no
+def capture_approval(question):                          # input: a yes or no from a person; anything else is no
     print(question, end="", flush=True)
     return sys.stdin.readline().strip().lower() == "y"
 ```
@@ -695,7 +707,7 @@ And a command is stopped after a minute:
 ```python
             cmd = block.input["cmd"]
             print(f"$ {cmd}")
-            if yes("  run this? [y/N] "):                # safety: nothing runs without a yes
+            if capture_approval("  run this? [y/N] "):   # safety: nothing runs without a yes
                 done = subprocess.run(["docker", "exec", BOX, "timeout", "60", "sh", "-c", cmd],   # safety: in the box; resilience: a minute at most
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
                 result = done.stdout or f"(exit {done.returncode})"
@@ -705,18 +717,19 @@ And a command is stopped after a minute:
                 result = "[refused: the person said no]"
                 record(cmd=cmd, refused=True)            # observability
             print(result)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
 > **Run, to be recorded:** "Run sleep 100, then tell me it finished." The command is stopped after a minute, and the agent says so.
 
 ### Why is it slow or costly?
 
-Every request sends the whole conversation again. Now each request asks the API to keep what it has already processed, so the next request pays full price only for what's new:
+Every request sends the whole conversation again. Now `assemble_context()` asks the API to keep what it has already processed, so the next request pays full price only for what's new:
 
 ```python
-        response = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages,
-                        cache_control={"type": "ephemeral"})   # performance: the conversation is cached too, not just the prompt
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages,
+            "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
 Look back at the record. The first request paid to store about 6,500 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred tokens were new. Reused tokens cost about a tenth as much.

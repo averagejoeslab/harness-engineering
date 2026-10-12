@@ -7,18 +7,28 @@ from anthropic import Anthropic, BadRequestError
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def call(each=lambda event: None, **request):            # model interface: the response streams back, and each piece goes to each()
+def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
     with client.messages.stream(model=MODEL, **request) as stream:
         for event in stream: each(event)
         return stream.get_final_message()
 
 # ── output: the one tool ────────────────────────────────────────────────────
-SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # the shell this computer uses
+SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
 tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
 def show(event):                                         # output: text, shown as it's written
     if event.type == "text": print(event.text, end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
+
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    results = []
+    for block in output:
+        if block.type == "tool_use":
+            print(f"$ {block.input['cmd']}")
+            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            print(done.stdout)
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
+    return results
 
 # ── context ─────────────────────────────────────────────────────────────────
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
@@ -66,52 +76,47 @@ This code is your harness. Its instructions are left out below, because they're 
 {mechanics()}
 ```"""}]
 
+def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
+    return {"system": system(), "tools": tools, "messages": messages}
+
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
     if drop > len(turns): sys.exit("[the conversation can't be summarized small enough]")
     keep = messages[turns[drop]:] if drop < len(turns) else [messages[turns[-1]]]
-    summary = call(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
+    summary = request_response(max_tokens=2048, system=system(), messages=keep + [{"role": "user", "content": "This conversation is too long to send. Summarize it into a gist that keeps what matters for carrying on."}])
     gist = next((b.text for b in summary.content if b.type == "text"), "")
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 
 # ── input ───────────────────────────────────────────────────────────────────
-def read(prompt):                                        # input: from a person
+def capture_input(prompt="> "):                          # input: captures what a person types
     while True:
         print(prompt, end="", flush=True)
         line = sys.stdin.readline()
         if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
         if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
         prompt = "> "
-input = " ".join(sys.argv[1:]) or read("> ")
+input = " ".join(sys.argv[1:]) or capture_input()        # input: from the command line, or from a person
 if input == "/q": sys.exit()
-chat = len(sys.argv) < 2
 
 # ── control flow ────────────────────────────────────────────────────────────
-messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+def control_flow(input):                                 # control flow: defines the shape of the loop
+    chat = len(sys.argv) < 2
+    messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+        messages.append({"role": "assistant", "content": output})
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            messages.append({"role": "user", "content": results})
+            continue
+        if not chat or (input := capture_input("\n> ")) == "/q":
+            break                                        # stop: a request from the command line is done, or /q
+        messages.append({"role": "user", "content": input})   # hand back: the person's next message
 
-while True:
-    try:
-        if drop:
-            messages, drop = compact(messages, drop), 0
-        output = call(show, max_tokens=16384, system=system(), tools=tools, messages=messages).content
-    except BadRequestError as e:
-        if "prompt is too long" not in str(e): raise
-        drop += 1
-        continue
-
-    messages.append({"role": "assistant", "content": output})
-
-    input = []
-    for block in output:                                 # output: run tool requests
-        if block.type == "tool_use":
-            print(f"$ {block.input['cmd']}")
-            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-            print(done.stdout)
-            input.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
-
-    if input:
-        messages.append({"role": "user", "content": input})
-        continue
-    if not chat or (input := read("\n> ")) == "/q":
-        break
-    messages.append({"role": "user", "content": input})
+control_flow(input)
