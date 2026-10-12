@@ -501,6 +501,73 @@ Inside the window, context sits in roles. Each role is for one kind of context, 
 
 **System** and **tools** come from inside the harness and stay the same all session. Everything else is dynamic. **User** is for any input from outside, whether a person typed it or another system sent it. A **tool result** rides in a user message, but as its own kind of block, so it's still trusted least.
 
+Here is what Claude is sent on the task's second request, after its first command came back. The self model is cut after its first lines; it's in full in the code below:
+
+```json
+{
+  "model": "claude-sonnet-5-5",
+  "max_tokens": 16384,
+  "system": [
+    {
+      "type": "text",
+      "cache_control": {
+        "type": "ephemeral"
+      },
+      "text": "# Self Model\n\n## Mind\n\n**Identity:** You are an agent, working for the person who messages you.\n…"
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "description": "Run a command in /bin/bash",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cmd"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "[2026-10-12 04:59:27] The tests are failing. Find out why and fix it."
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "id": "toolu_01NTcqTYaJRsMweGCJZ9nT8g",
+          "caller": {
+            "type": "direct"
+          },
+          "input": {
+            "cmd": "pwd; ls -la; git status 2>&1 | head"
+          },
+          "name": "shell",
+          "type": "tool_use"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01NTcqTYaJRsMweGCJZ9nT8g",
+          "content": "[2026-10-12 04:59:28, ran 0.0s] /home/user/harness-engineering/shop\ntotal 16\ndrwxr-xr-x 2 root root 4096 Oct 12 04:59 .\ndrwxr-xr-x 6 root root 4096 Oct 12 03:44 ..\n-rw-r--r-- 1 root root  216 Oct 12 04:59 prices.py\n-rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py\nOn branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean\n"
+        }
+      ]
+    }
+  ]
+}
+```
+
 So for each piece of context, we ask:
 
 1. **Where does it come from?** That picks the role: who it is and how it works → system; what it can call → tools; input from outside → user; the model's own words and calls → assistant; what a command returned → tool result.
