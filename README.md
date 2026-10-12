@@ -1071,13 +1071,29 @@ uv run ../harness_prod.py
 ```
 
 ```
+Updated 1 path from the index
 < The tests are failing. Find out why and fix it.
-$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+$ cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
   run this? [y/N] y
-  └ ...
-$ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -20; git log --oneline | head
-  run this? [y/N]
-Killed
+  └ # Memory
+    - commit messages: write them in lowercase, starting with "fix:"
+    __pycache__
+    prices.py
+    test_prices.py
+$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+  run this? [y/N] ^CTraceback (most recent call last):
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 303, in <module>
+    control_flow()
+    ~~~~~~~~~~~~^^
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 296, in control_flow
+    results = handle_output(output)
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 44, in handle_output
+    approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
+                    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 275, in capture_approval
+    return sys.stdin.readline().strip().lower() == "y"
+           ~~~~~~~~~~~~~~~~~~^^
+KeyboardInterrupt
 ```
 
 ```bash
@@ -1086,19 +1102,50 @@ uv run ../harness_prod.py
 
 ```
 continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
-$ cd /tmp/shop; cat prices.py test_prices.py; git log --oneline | head
+$ cat prices.py test_prices.py
   run this? [y/N] y
-  └ ...
-> Docstring says percentage; code subtracts the raw number. Fix it.
-$ cd /tmp/shop; sed -i 's/subtotal - discount, 2/subtotal * (1 - discount \/ 100), 2/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail -8
+$ python -m pytest -q 2>&1 | tail -30
   run this? [y/N] y
-  └ ...
+$ cat prices.py test_prices.py
+  └ def total(items, discount=0):
+        """Add up (price, quantity) pairs, then take off a percentage discount."""
+        subtotal = sum(price * quantity for price, quantity in items)
+        return round(subtotal - discount, 2)
+    import unittest
+    from prices import total
+    
+    
+    class TestTotal(unittest.TestCase):
+        def test_no_discount(self):
+            self.assertEqual(total([(10, 2), (5, 1)]), 25)
+    
+        def test_ten_percent_off(self):
+            self.assertEqual(total([(10, 2), (5, 1)], discount=10), 22.5)
+    
+    
+    if __name__ == "__main__":
+        unittest.main()
+$ python -m pytest -q 2>&1 | tail -30
+  └ /usr/local/bin/python: No module named pytest
+> The discount is documented as a percentage but is subtracted as a flat amount. I'll fix that.
+$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && cat prices.py && python -m unittest -v 2>&1 | tail
+  run this? [y/N] y
+  └ def total(items, discount=0):
+        """Add up (price, quantity) pairs, then take off a percentage discount."""
+        subtotal = sum(price * quantity for price, quantity in items)
+        return round(subtotal * (1 - discount / 100), 2)
+    test_no_discount (test_prices.TestTotal.test_no_discount) ... ok
+    test_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok
+    
+    ----------------------------------------------------------------------
+    Ran 2 tests in 0.000s
+    
     OK
-> The tests were failing because `total()` in `prices.py` subtracted `discount` from the subtotal as a flat amount. Its docstring and the test both treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
-  I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests in `test_prices.py` now pass. I haven't committed the change.
+> The tests were failing because `total()` in `prices.py` treated `discount` as a flat amount. Its docstring and the test both treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
+  
+  I changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`. pytest isn't installed here, so I didn't use it.
+<
 ```
-
-(shortened)
 
 ### What if it does harm?
 
