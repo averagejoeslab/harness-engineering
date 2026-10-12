@@ -609,14 +609,25 @@ uv run ../harness.py
 
 ```
 < Who are you, and where are you working?
-> I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only tool is a bash shell. I use it to work with files, run programs, and reach the network, and I read back its output to check that each step worked.
-
-  I'm working on a Linux machine (kernel 6.18.44, x86_64). My working directory is `/tmp/shop`, and today's date is 2026-10-12. I haven't run anything in the shell yet, so this comes from my setup description and not from a live check.
-
-  I can look around the directory, or start on a task, whichever you prefer.
+$ pwd; hostname; uname -sr; ls
+  └ /home/user/harness-engineering/shop
+    vm
+    Linux 6.18.44-fc-v114
+    __pycache__
+    prices.py
+    test_prices.py
+> I'm an agent that works for whoever messages me, which at the moment is you. I think with a language model (the harness is set to `claude-sonnet-5-5`). I act through a bash shell, which is my only tool. With it I can work with files, run programs, reach the network and operate the desktop.
+  
+  I'm working in `/home/user/harness-engineering/shop`, on a Linux machine named `vm` running kernel 6.18.44 (x86_64). The directory holds:
+  - `prices.py`
+  - `test_prices.py`
+  - `__pycache__/`
+  
+  It looks like a small Python project with a test file. Tell me what you'd like done with it.
+< 
 ```
 
-It didn't run a single command. It knows what it is, its body and the date, because they're in what it's shown, and it says so.
+It ran one command, to look at the folder, not to find out what it is. It knows it's an agent, that its body is a shell, and which model it thinks with, because they're in what it's shown.
 
 That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the task, knows what it is and how to use its body, and keeps going however long the session runs.
 
