@@ -991,45 +991,78 @@ uv run ../harness_prod.py
 
 ```
 < What have we done in this folder before?
-$ cd .harness 2>/dev/null && ls; cat memory/memory.md 2>/dev/null; ls skills episodes 2>/dev/null; grep -m1 -H "" episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T03-28-50 | cut -c1-250; cd ..; ls
+$ ls -la; ls .harness .harness/episodes 2>/dev/null; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
   run this? [y/N] y
-  └ episodes
+  └ total 24
+    drwxr-xr-x 4 root root 4096 Oct 12 04:26 .
+    drwxr-xr-x 3 root root 4096 Oct 12 04:27 ..
+    drwxr-xr-x 4 root root 4096 Oct 12 04:26 .harness
+    drwxrwxrwx 2 root root 4096 Oct 12 04:26 __pycache__
+    -rw-r--r-- 1 root root  228 Oct 12 04:26 prices.py
+    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
+    .harness:
+    episodes
     memory
+    
+    .harness/episodes:
+    2026-10-12T04-26-33.jsonl
+    2026-10-12T04-26-46.jsonl
+    2026-10-12T04-27-05.jsonl
     # Memory
     - commit messages: write them in lowercase, starting with "fix:"
-    episodes:
-    2026-10-12T03-27-56.jsonl
-    2026-10-12T03-28-14.jsonl
-    2026-10-12T03-28-50.jsonl
-    episodes/2026-10-12T03-27-56.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-    episodes/2026-10-12T03-28-14.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
-    __pycache__
-    prices.py
-    test_prices.py
-$ cd .harness/episodes; tail -n 3 2026-10-12T03-27-56.jsonl | cut -c1-400; grep -o '"cmd": "[^"]*"' 2026-10-12T03-28-14.jsonl; tail -n 2 2026-10-12T03-28-14.jsonl | cut -c1-600; cd ../..; git log --oneline 2>&1 | head
+$ cd .harness/episodes; for f in 2026-10-12T04-26-33.jsonl 2026-10-12T04-26-46.jsonl; do echo "== $f"; cut -c1-400 $f; done; cd ../..; cat prices.py test_prices.py
   run this? [y/N] y
-  └ {"role": "assistant", "content": [{"id": "toolu_01RRq8WYucCmE7tuNfN9TkDc", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'\n- commit messages: write them in lowercase, starting with \"fix:\"\nEOF\ncat .harness/memory/memory.md"}, "name": "shell"
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01RRq8WYucCmE7tuNfN9TkDc", "content": "# Memory\n- commit messages: write them in lowercase, starting with \"fix:\"\n"}]}
-    {"role": "assistant", "content": [{"text": "Noted. From now on I'll write commit messages in lowercase and start them with \"fix:\". I saved that to memory, so it will carry over to future sessions.", "type": "text"}]}
-    "cmd": "cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5"
-    "cmd": "cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30"
-    "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git -C . rev-parse --show-toplevel 2>&1 | head -1; ls -a"
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01221dB1tHiBo99ZsLUipnRx", "content": "test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\nfatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)\n.\n..\n.harness\n.pytest_cache\n__pycache__\nprices.py\ntest_prices.py\n"}]}
-    {"role": "assistant", "content": [{"signature": "CAQSywcKEAgSGAI4AUIIdGhpbmtpbmcSDL3BU8gqy1YQ1P1LIRoMeV55NdheX6E/fjjLIjDwpF9RoA4SCXBH6g7+DjW/PaLhesYBzH4+VxkAaM8LVbrhRf/8z3Iv/ZERswVi0Yoq6AaiyMparBJomsGJmvFbuRzEYZSX105DHb17FyS6qv6hFFytLfExupQzQtCQQuuykqbgz87TRNWSWRlOuI7OfvXUB5RelYp7kxi30mj+XeicUkDBuuNbBEkw6mMf40nMmqZX8eNu8+pBm4RuqfZiip2GwzL8SImSEfNSuw37C7DvtmLnDiyjFtjgngFvMP2qugy+ZxkXFo3LiciugfetalVXDL7DPZCmVQ7DrQrM5n+7helv2eDl3tdT4/kGL4mohtihzBrz1lYNXaDXGqr65Cw/1y0RwcR++vun3EeN7dgHSJZ7Yie1OH9y6pGOUoZ3biYmZOvNZX+kCzsPorxKWbt7MMF+jIFb4qFc1xrCqFpcDh8DDC3+FgWLBz251GaOssDmnEjwKJgAs7vwrx+lGF7OMMlYlpF
-    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
-    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-> Two earlier sessions are recorded in this folder. The folder is a small shop pricing project with `prices.py` and `test_prices.py`.
+  └ == 2026-10-12T04-26-33.jsonl
+    {"role": "user", "content": "[2026-10-12 04:26:33] From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+    {"role": "assistant", "content": [{"id": "toolu_01Sr9kgSpuFZNQG38odj9Pcs", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; grep -i \"commit\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01Sr9kgSpuFZNQG38odj9Pcs", "content": "[2026-10-12 04:26:35, ran 0.2s] (exit 1)"}]}
+    {"role": "assistant", "content": [{"id": "toolu_01X2KRzdKFGVj1Y9KCa3Rt7e", "caller": {"type": "direct"}, "input": {"cmd": "cat >> .harness/memory/memory.md << 'EOF'\n- commit messages: write them in lowercase, starting with \"fix:\"\nEOF\ngrep -i \"commit\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01X2KRzdKFGVj1Y9KCa3Rt7e", "content": "[2026-10-12 04:26:37, ran 0.1s] - commit messages: write them in lowercase, starting with \"fix:\"\n"}]}
+    {"role": "assistant", "content": [{"text": "Noted. From now on I'll write commit messages in lowercase, starting with \"fix:\". I saved this to memory.", "type": "text"}]}
+    == 2026-10-12T04-26-46.jsonl
+    {"role": "user", "content": "[2026-10-12 04:26:46] The tests are failing. Find out why, fix it, and commit."}
+    {"role": "assistant", "content": [{"id": "toolu_01CjQ9JjFdqA978ZX5q8XNj3", "caller": {"type": "direct"}, "input": {"cmd": "ls -a; git status --short | head; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01CjQ9JjFdqA978ZX5q8XNj3", "content": "[2026-10-12 04:26:48, ran 0.1s] .\n..\n.harness\nprices.py\ntest_prices.py\nfatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n# Memory\n- commit messages: write them 
+    {"role": "assistant", "content": [{"id": "toolu_01XaY3sRKYRC5W3GF9hjiJoW", "caller": {"type": "direct"}, "input": {"cmd": "cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01XaY3sRKYRC5W3GF9hjiJoW", "content": "[2026-10-12 04:26:50, ran 0.2s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal - discount, 2)\nimport unittest\nfrom prices
+    {"role": "assistant", "content": [{"text": "Discount is documented as a percentage but subtracted as an absolute amount.", "type": "text"}, {"id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version"}, "name"
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "content": "[2026-10-12 04:26:52, ran 0.5s] test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\ngit version
+    {"role": "assistant", "content": [{"signature": "CAQShggKEAgSGAI4AUIIdGhpbmtpbmcSDFjanCovJKdLXJ7MZBoMJKa868Q/SctgXcASIjDWCj2cZLLBGR1cdLdSdTjc37WmDgpt2ZgpHkC5hPJAavY7D8FwQHfOhRmC75ij/k4qowdEqm3pjrWHbm9Oq4dHxSUilakF+yY1Wp4MgZrxFRR6kF9d+YiDvzbZXjZeMtCBDnUPymTwLMIB/XKN3W06FW6Uf8M8Dxk1TaLY1Mzv9aZoi+kM+ypJNPZNzFIOJUInKmDXtByCr63xZGkQs2nMYgS+FZ1EeYI1LFYnvjBdUJz0XEojF669u7I0E4aM973AVTClecxYttDoD9ESRU1P22Q
+    def total(items, discount=0):
+        """Add up (price, quantity) pairs, then take off a percentage discount."""
+        subtotal = sum(price * quantity for price, quantity in items)
+        return round(subtotal * (1 - discount / 100), 2)
+    import unittest
+    from prices import total
+    
+    
+    class TestTotal(unittest.TestCase):
+        def test_no_discount(self):
+            self.assertEqual(total([(10, 2), (5, 1)]), 25)
+    
+        def test_ten_percent_off(self):
+            self.assertEqual(total([(10, 2), (5, 1)], discount=10), 22.5)
+    
+    
+    if __name__ == "__main__":
+        unittest.main()
+$ tail -n 3 .harness/episodes/2026-10-12T04-26-46.jsonl | cut -c1-700
+  run this? [y/N] y
+  └ {"role": "assistant", "content": [{"text": "Discount is documented as a percentage but subtracted as an absolute amount.", "type": "text"}, {"id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git --version"}, "name": "shell", "type": "tool_use"}]}
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01NBhxLRRXF9UQsddjjQKDfR", "content": "[2026-10-12 04:26:52, ran 0.5s] test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\ngit version 2.47.3\n"}]}
+    {"role": "assistant", "content": [{"signature": "CAQShggKEAgSGAI4AUIIdGhpbmtpbmcSDFjanCovJKdLXJ7MZBoMJKa868Q/SctgXcASIjDWCj2cZLLBGR1cdLdSdTjc37WmDgpt2ZgpHkC5hPJAavY7D8FwQHfOhRmC75ij/k4qowdEqm3pjrWHbm9Oq4dHxSUilakF+yY1Wp4MgZrxFRR6kF9d+YiDvzbZXjZeMtCBDnUPymTwLMIB/XKN3W06FW6Uf8M8Dxk1TaLY1Mzv9aZoi+kM+ypJNPZNzFIOJUInKmDXtByCr63xZGkQs2nMYgS+FZ1EeYI1LFYnvjBdUJz0XEojF669u7I0E4aM973AVTClecxYttDoD9ESRU1P22QaUJ5S4jBcNyDxcCGFfuQCCat44l3njoRqjhqfLJEc846mTk8uUCHsEEbHzVoXkrEETz2BgbpaWky6Zwu9/KuLWV+/20nIzIPOwXkNJKfAJLKtvla9vrql2I2GX1+JCF1rIYROexAOZxM1H5GL79ltfqjZfLbx8PEzcLruEUppDOicUAI6USe1zobkUQ3u//cW9tRtbbSKyqBCaVVauBCdehH3+u8CHzZUOg3D5HpAeYGTD40jZwnL8rZIQEsUXOu5ECcYkzNSNeiLJgIxF4bwzCVkdCfAYoxQ+9Y5+G2Zlvz
+> Two earlier sessions in this folder, both on 2026-10-12:
   
-  1. **Commit message preference:** You asked me to write commit messages in lowercase, starting with "fix:". I saved that to memory (`.harness/memory/memory.md`).
-  2. **Failing tests:** You asked me to find out why the tests were failing, fix it, and commit.
-     - **The bug:** `prices.py` subtracted the discount as a flat amount.
-     - **The fix:** It now treats the discount as a percentage: `round(subtotal * (1 - discount / 100), 2)`.
-     - **The result:** Both tests pass (`test_no_discount` and `test_ten_percent_off`).
-     - **The commit:** It most likely never happened, because the folder isn't a git repository. Running `git` there gives "not a git repository". My last command only checked for a repository. The session log ends with that check, so I can't say for certain what happened afterwards.
+  1. **04:26:33, commit message preference.** You asked me to write commit messages in lowercase, starting with "fix:". I saved that to memory (`.harness/memory/memory.md`).
   
-  The third session is this one. There are no saved skills.
+  2. **04:26:46, failing tests.** You asked me to find out why the tests were failing, fix it, and commit.
+     - **Cause:** in `prices.py`, `total()` is documented as taking a percentage discount but subtracted it as a flat amount.
+     - **Fix:** it now returns `round(subtotal * (1 - discount / 100), 2)`. Both tests in `test_prices.py` pass.
+     - **Commit:** this did not happen. The folder isn't a git repository, since `git status` failed with "not a git repository". The session ended after the test run, so nothing was committed and I never raised the missing repo with you.
   
-  If you want the fix committed, I'd need to run `git init` first. I'll wait for your go-ahead.
+  The folder holds `prices.py` (the fixed code) and `test_prices.py`. There are no saved skills, and the only memory entry is the commit-message rule.
+  
+  If you still want a commit, I'd need to run `git init` first. I haven't done that, so tell me if you want it.
 <
 ```
 
