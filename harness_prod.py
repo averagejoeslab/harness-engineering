@@ -239,7 +239,7 @@ def compact(messages, drop):                             # current inputs: too l
 def resume():                                            # persistence: carry on a session that ended mid-task
     global EPISODE
     episodes = sorted(glob.glob(".harness/episodes/*.jsonl"))
-    if not episodes: return []
+    if not episodes or len(sys.argv) > 1: return []      # a one-off request starts fresh
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
@@ -265,7 +265,8 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input():                                     # input: captures what a person types
+def capture_input():                                     # input: a one-off request on the command line, or what a person types
+    if len(sys.argv) > 1: return " ".join(sys.argv[1:])
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
@@ -296,6 +297,7 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             add(messages, {"role": "user", "content": results})
             continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
         add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()

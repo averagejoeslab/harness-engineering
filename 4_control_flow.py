@@ -1,7 +1,7 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import subprocess
+import subprocess, sys
 from anthropic import Anthropic
 
 # ── model interface ─────────────────────────────────────────────────────────
@@ -32,7 +32,8 @@ def handle_output(output):                               # output: handles the m
     return results
 
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input():                                     # input: captures what a person types
+def capture_input():                                     # input: a one-off request on the command line, or what a person types
+    if len(sys.argv) > 1: return " ".join(sys.argv[1:])
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
@@ -47,6 +48,7 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             messages.append({"role": "user", "content": results})
             continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
         messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()

@@ -150,7 +150,7 @@ The model answered, but it can't act, so it asks us to share the code. And the r
 
 ### 2. Let someone ask
 
-Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types into the terminal while the program runs:
+Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types into the terminal while the program runs, or takes a one-off request from the command line:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -169,11 +169,12 @@ In [`2_input.py`](./2_input.py), `capture_input()` is added, and what it capture
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input():                                     # input: captures what a person types
+def capture_input():                                     # input: a one-off request on the command line, or what a person types
+    if len(sys.argv) > 1: return " ".join(sys.argv[1:])
     line = ""
     while not line.strip(): line = input("< ")           # Enter on an empty line: ask again
     return line
-message = capture_input()                                # input: what a person types while it runs
+message = capture_input()                                # input: the request, typed or from the command line
 
 output = request_response(max_tokens=16384, messages=[{"role": "user", "content": message}])
 print(output.model_dump_json(indent=2))
@@ -267,7 +268,7 @@ It ran a command, but what the command printed goes nowhere. That's new input, f
 
 ### 4. Let it keep going
 
-Next in the flow is **control flow**, which defines the shape of the loop. `control_flow()` sends back what the commands printed, and goes again until the model is done. Then it hands back to you for your next message. Ctrl-C stops it.
+Next in the flow is **control flow**, which defines the shape of the loop. `control_flow()` sends back what the commands printed, and goes again until the model is done. Then it hands back to you for your next message, or stops if the request was a one-off from the command line. Ctrl-C stops it.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -295,6 +296,7 @@ def control_flow():                                      # control flow: defines
         if results:                                      # a command ran: send back what it printed, and go again
             messages.append({"role": "user", "content": results})
             continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
         messages.append({"role": "user", "content": capture_input()})   # hand back: the person's next message
 
 control_flow()
@@ -532,18 +534,6 @@ def count_works():
 def read(name):
     return open(name).read() if os.path.exists(name) else ""
 
-def run(harness, request):                               # types the request, says yes to every approval, and stops it when it hands back
-    agent = subprocess.Popen(["uv", "run", "-q", harness], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                             env={**os.environ, "PYTHONUNBUFFERED": "1"})
-    agent.stdin.write(request.encode() + b"\n"); agent.stdin.flush()
-    said = b""
-    while char := agent.stdout.read(1):
-        said += char
-        if said.endswith(b"[y/N] "): agent.stdin.write(b"y\n"); agent.stdin.flush()
-        if said.endswith(b"\n< "): break                # it handed back: the task is done
-    agent.stdin.close(); agent.wait()                    # nothing more is typed, so it stops
-    return said.decode(errors="replace")
-
 tasks = [                                                # the request, and how to tell it was done right
     ("The tests are failing. Find out why and fix it.",
      lambda said: sh("python3 -m unittest -q").returncode == 0 and sh("git diff --quiet HEAD -- test_prices.py").returncode == 0),
@@ -563,7 +553,8 @@ for request, done_right in tasks:
     for f in os.listdir(os.path.join(here, "shop")):
         if f.endswith(".py"): shutil.copy(os.path.join(here, "shop", f), f)
     sh("git init -q && git add . && git -c user.name=eval -c user.email=eval@example.com commit -qm start")
-    said = run(os.path.join(here, harness), request)
+    said = subprocess.run(["uv", "run", "-q", os.path.join(here, harness), request], input="y\n" * 50,
+                          capture_output=True, text=True).stdout
     ok = done_right(said)
     passed += ok
     print(("PASS  " if ok else "FAIL  ") + request, flush=True)
@@ -846,7 +837,7 @@ That leaves the task in progress. When the harness starts, **control flow** chec
 def resume():                                            # persistence: carry on a session that ended mid-task
     global EPISODE
     episodes = sorted(glob.glob(".harness/episodes/*.jsonl"))
-    if not episodes: return []
+    if not episodes or len(sys.argv) > 1: return []      # a one-off request starts fresh
     messages = [json.loads(line) for line in open(episodes[-1])]
     last = messages[-1]
     unfinished = last["role"] == "user" or any(block["type"] == "tool_use" for block in last["content"])
@@ -1116,7 +1107,11 @@ PASS  Which operating system is this computer running? Write just its name into 
 5/5 passed
 ```
 
-It runs with no one there: `tasks.py` types each request, answers yes to every approval, and stops the harness when it hands back. So the box is what keeps it safe. Each task runs in a fresh folder, with no diary to carry on from.
+It runs with no one there: **input** takes each request from the command line, **control flow** stops when it's done, and `tasks.py` answers yes to every approval, so the box is what keeps it safe. A one-off request never carries on an old session, so every task starts fresh:
+
+```python
+    if not episodes or len(sys.argv) > 1: return []      # a one-off request starts fresh
+```
 
 Run it after every change.
 
