@@ -210,7 +210,7 @@ Now anyone can ask, but the model can still only reply in words: it asks us to s
 
 ### 3. Let it act
 
-Next is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model knows it can ask to run a command:
+Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for, and `show()` prints its words as they stream in:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -225,15 +225,11 @@ Next is **output**, which handles what the model sends back. We describe one too
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`3_output.py`](./3_output.py):
+In [`3_output.py`](./3_output.py), `tools`, `show()` and `handle_output()` are added:
 
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
-```
 
-`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world:
-
-```python
 def show(event):                                         # output: text, shown as it's written
     if event.type == "text": print(event.text, end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
@@ -247,14 +243,12 @@ def handle_output(output):                               # output: handles the m
             print(done.stdout)
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": done.stdout or f"(exit {done.returncode})"})  # input: from the world
     return results
-```
 
-```python
 output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-Its commands run in the folder it starts in, on your machine, without asking. We run it and type the task. From here on, a `$` line in the results is a command the agent ran, followed by what it printed:
+We run it, and type the task at the `>` prompt. Its commands run in `shop/`, on your machine, without asking. A `$` line is a command it ran, followed by what it printed:
 
 ```bash
 uv run ../3_output.py
@@ -268,7 +262,7 @@ prices.py
 test_prices.py
 ```
 
-It acted, but what the command printed never reaches the model, so it can't take the next step.
+It ran a command, but what the command printed goes nowhere. That's new input, from the world, and nothing sends it back to the model, so it can't take the next step. Sending it back and going again is next in the flow: control flow.
 
 ### 4. Let it keep going
 
