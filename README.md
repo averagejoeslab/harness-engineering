@@ -619,17 +619,17 @@ uv run ../harness.py
 $ pwd; ls -la
   └ /home/user/harness-engineering/shop
     total 16
-    drwxr-xr-x 2 root root 4096 Oct 12 04:24 .
+    drwxr-xr-x 2 root root 4096 Oct 12 04:37 .
     drwxr-xr-x 6 root root 4096 Oct 12 03:44 ..
-    -rw-r--r-- 1 root root  216 Oct 12 03:39 prices.py
+    -rw-r--r-- 1 root root  216 Oct 12 04:34 prices.py
     -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-> I'm an agent that works for whoever messages me. I act through a bash shell on a Linux machine (kernel 6.18.44, x86_64). I can read and change files, run programs, and use the network.
+> I'm an agent that works for whoever messages me. I act through a bash shell on a Linux machine (kernel 6.18.44, x86_64). I was started on 2026-10-12 at 04:38:45.
   
-  I'm working in `/home/user/harness-engineering/shop`. It's a small directory with two files:
+  I'm working in `/home/user/harness-engineering/shop`. Every command I run starts from that directory. It has two files:
   - `prices.py`
   - `test_prices.py`
   
-  I haven't opened either file yet. I can read them or run the tests if you'd like.
+  I haven't opened either file yet. Reading is safe, so I can look at them whenever you like. I ask before doing anything that can't be undone.
 <
 ```
 
@@ -903,17 +903,17 @@ uv run ../harness_prod.py
 
 ```
 < pytest is not installed here: run tests with python -m unittest. Remember that.
-$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; grep -i "test" .harness/memory/memory.md
+$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; grep -i "unittest\|pytest" .harness/memory/memory.md
   run this? [y/N] y
   └ (exit 1)
 $ cat >> .harness/memory/memory.md << 'EOF'
-- tests: pytest is not installed in this environment; run tests with python -m unittest
+- testing: pytest is not installed here; run tests with `python -m unittest`
 EOF
-cat .harness/memory/memory.md
+tail -3 .harness/memory/memory.md
   run this? [y/N] y
   └ # Memory
-    - tests: pytest is not installed in this environment; run tests with python -m unittest
-> I've saved it to memory: pytest isn't installed here, so tests run with `python -m unittest`.
+    - testing: pytest is not installed here; run tests with `python -m unittest`
+> Saved: pytest isn't installed here, so I'll run tests with `python -m unittest`.
 <
 ```
 
@@ -925,12 +925,12 @@ uv run ../harness_prod.py
 
 ```
 < The tests are failing. Find out why and fix it.
-$ cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls
+$ ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
   run this? [y/N] y
-  └ # Memory
-    - tests: pytest is not installed in this environment; run tests with python -m unittest
-    prices.py
+  └ prices.py
     test_prices.py
+    # Memory
+    - testing: pytest is not installed here; run tests with `python -m unittest`
 $ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] y
   └ def total(items, discount=0):
@@ -965,21 +965,21 @@ $ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
     Ran 2 tests in 0.001s
     
     FAILED (failures=1)
-> The docstring says discount is a percentage, but the code subtracts it as an absolute amount.
-$ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5
+> The docstring says the discount is a percentage, but the code subtracts it as a flat amount. I'll fix the code.
+$ sed -i 's|return round(subtotal - discount, 2)|return round(subtotal * (1 - discount / 100), 2)|' prices.py && python -m unittest 2>&1 | tail -5
   run this? [y/N] y
-  └ def total(items, discount=0):
-        """Add up (price, quantity) pairs, then take off a percentage discount."""
-        subtotal = sum(price * quantity for price, quantity in items)
-        return round(subtotal * (1 - discount / 100), 2)
-    ..
+  └ ..
     ----------------------------------------------------------------------
     Ran 2 tests in 0.000s
     
     OK
-> The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
+> The tests now pass.
   
-  I changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.
+  **Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, even though its docstring and the test treat it as a percentage. With a discount of 10, the subtotal of 25 became 15 instead of 22.5.
+  
+  **Fix:** it now returns `round(subtotal * (1 - discount / 100), 2)`.
+  
+  I ran `python -m unittest` afterwards and both tests pass.
 <
 ```
 
@@ -993,40 +993,33 @@ uv run ../harness_prod.py
 
 ```
 < What have we done in this folder before?
-$ cd .harness 2>/dev/null && ls; cat memory/memory.md 2>/dev/null; ls skills 2>/dev/null; ls episodes 2>/dev/null; cd ..; ls -la
+$ ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T04-39-05 | cut -c1-250
   run this? [y/N] y
-  └ episodes
-    memory
-    # Memory
-    - tests: pytest is not installed in this environment; run tests with python -m unittest
-    2026-10-12T04-32-45.jsonl
-    2026-10-12T04-32-52.jsonl
-    2026-10-12T04-33-09.jsonl
-    total 24
-    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .
-    drwxr-xr-x 3 root root 4096 Oct 12 04:33 ..
-    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .harness
-    drwxrwxrwx 2 root root 4096 Oct 12 04:32 __pycache__
-    -rw-r--r-- 1 root root  228 Oct 12 04:32 prices.py
+  └ total 24
+    drwxr-xr-x 4 root root 4096 Oct 12 04:39 .
+    drwxr-xr-x 3 root root 4096 Oct 12 04:39 ..
+    drwxr-xr-x 4 root root 4096 Oct 12 04:38 .harness
+    drwxrwxrwx 2 root root 4096 Oct 12 04:39 __pycache__
+    -rw-r--r-- 1 root root  228 Oct 12 04:39 prices.py
     -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-$ cd .harness/episodes; for f in 2026-10-12T04-32-45.jsonl 2026-10-12T04-32-52.jsonl; do echo "== $f"; cut -c1-500 $f; done; cd ../..; cat prices.py test_prices.py
+    # Memory
+    - testing: pytest is not installed here; run tests with `python -m unittest`
+    2026-10-12T04-38-49.jsonl
+    2026-10-12T04-38-56.jsonl
+    2026-10-12T04-39-05.jsonl
+    .harness/episodes/2026-10-12T04-38-49.jsonl:{"role": "user", "content": "[2026-10-12 04:38:50] pytest is not installed here: run tests with python -m unittest. Remember that."}
+    .harness/episodes/2026-10-12T04-38-56.jsonl:{"role": "user", "content": "[2026-10-12 04:38:56] The tests are failing. Find out why and fix it."}
+$ cd .harness/episodes; for f in 2026-10-12T04-38-49 2026-10-12T04-38-56; do echo "== $f"; grep -o '"cmd": "[^"]*"' $f.jsonl; tail -n 1 $f.jsonl | cut -c1-600; done; cd ../..; cat prices.py test_prices.py
   run this? [y/N] y
-  └ == 2026-10-12T04-32-45.jsonl
-    {"role": "user", "content": "[2026-10-12 04:32:45] pytest is not installed here: run tests with python -m unittest. Remember that."}
-    {"role": "assistant", "content": [{"id": "toolu_01FCuXnTawAWYqkhaPjC6BQJ", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; grep -i \"test\" .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01FCuXnTawAWYqkhaPjC6BQJ", "content": "[2026-10-12 04:32:48, ran 0.1s] (exit 1)"}]}
-    {"role": "assistant", "content": [{"id": "toolu_019jBM4LkznvRUjDkCkpDRrS", "caller": {"type": "direct"}, "input": {"cmd": "cat >> .harness/memory/memory.md << 'EOF'\n- tests: pytest is not installed in this environment; run tests with python -m unittest\nEOF\ncat .harness/memory/memory.md"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_019jBM4LkznvRUjDkCkpDRrS", "content": "[2026-10-12 04:32:50, ran 0.1s] # Memory\n- tests: pytest is not installed in this environment; run tests with python -m unittest\n"}]}
-    {"role": "assistant", "content": [{"text": "I've saved it to memory: pytest isn't installed here, so tests run with `python -m unittest`.", "type": "text"}]}
-    == 2026-10-12T04-32-52.jsonl
-    {"role": "user", "content": "[2026-10-12 04:32:53] The tests are failing. Find out why and fix it."}
-    {"role": "assistant", "content": [{"id": "toolu_018XydQcK6rLvSoZP9TqGWrk", "caller": {"type": "direct"}, "input": {"cmd": "cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_018XydQcK6rLvSoZP9TqGWrk", "content": "[2026-10-12 04:32:54, ran 0.1s] # Memory\n- tests: pytest is not installed in this environment; run tests with python -m unittest\nprices.py\ntest_prices.py\n"}]}
-    {"role": "assistant", "content": [{"id": "toolu_0198BmaJiHeUVUw53NXjiyKk", "caller": {"type": "direct"}, "input": {"cmd": "cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_0198BmaJiHeUVUw53NXjiyKk", "content": "[2026-10-12 04:32:56, ran 0.4s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal - discount, 2)\nimport unittest\nfrom prices import total\n\n\nclass TestTotal(unittest.TestCase):\n    def test_no_discount(self):\n        sel
-    {"role": "assistant", "content": [{"text": "The docstring says discount is a percentage, but the code subtracts it as an absolute amount.", "type": "text"}, {"id": "toolu_01JgSemkNx7sRQyZkDgPhYDT", "caller": {"type": "direct"}, "input": {"cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5"}, "name": "shell", "type": "tool_use"}]}
-    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01JgSemkNx7sRQyZkDgPhYDT", "content": "[2026-10-12 04:32:58, ran 0.2s] def total(items, discount=0):\n    \"\"\"Add up (price, quantity) pairs, then take off a percentage discount.\"\"\"\n    subtotal = sum(price * quantity for price, quantity in items)\n    return round(subtotal * (1 - discount / 100), 2)\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n"}]}
-    {"role": "assistant", "content": [{"text": "The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.\n\nI changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.", "type": "text"}]}
+  └ == 2026-10-12T04-38-49
+    "cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"
+    "cmd": "cat >> .harness/memory/memory.md << 'EOF'\n- testing: pytest is not installed here; run tests with `python -m unittest`\nEOF\ntail -3 .harness/memory/memory.md"
+    {"role": "assistant", "content": [{"text": "Saved: pytest isn't installed here, so I'll run tests with `python -m unittest`.", "type": "text"}]}
+    == 2026-10-12T04-38-56
+    "cmd": "ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null"
+    "cmd": "cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30"
+    "cmd": "sed -i 's|return round(subtotal - discount, 2)|return round(subtotal * (1 - discount / 100), 2)|' prices.py && python -m unittest 2>&1 | tail -5"
+    {"role": "assistant", "content": [{"text": "The tests now pass.\n\n**Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, even though its docstring and the test treat it as a percentage. With a discount of 10, the subtotal of 25 became 15 instead of 22.5.\n\n**Fix:** it now returns `round(subtotal * (1 - discount / 100), 2)`.\n\nI ran `python -m unittest` afterwards and both tests pass.", "type": "text"}]}
     def total(items, discount=0):
         """Add up (price, quantity) pairs, then take off a percentage discount."""
         subtotal = sum(price * quantity for price, quantity in items)
@@ -1045,15 +1038,14 @@ $ cd .harness/episodes; for f in 2026-10-12T04-32-45.jsonl 2026-10-12T04-32-52.j
     
     if __name__ == "__main__":
         unittest.main()
-> Two earlier sessions, both on 2026-10-12, in a small project with `prices.py` and `test_prices.py`.
+> Two earlier sessions, both short:
   
-  1. **Memory note (04:32).** You told me pytest isn't installed here and to run tests with `python -m unittest`. I saved that as a fact in `.harness/memory/memory.md`.
-  2. **Failing tests (04:32).** You asked me to find out why the tests were failing and fix it.
-     - **Cause:** `total()` in `prices.py` subtracted `discount` as a flat amount, but its docstring and the test treat it as a percentage. With `discount=10` on a 25 subtotal it returned 15 instead of 22.5.
-     - **Fix:** I changed the last line to `round(subtotal * (1 - discount / 100), 2)`.
-     - **Result:** Both tests passed under `python -m unittest`.
+  1. **04:38:49, a memory note.** You told me pytest isn't installed here, so tests run with `python -m unittest`. I saved that to memory.
+  2. **04:38:56, a failing test.** You asked me to find out why the tests were failing and fix it. The cause was in `prices.py`. `total()` subtracted `discount` as a flat amount, but the docstring and the test treat it as a percentage. I changed it to `round(subtotal * (1 - discount / 100), 2)`. Afterwards both tests in `test_prices.py` passed under `python -m unittest`.
   
-  No skills have been written yet. This session is only a question, so I haven't changed anything.
+  The folder has `prices.py`, `test_prices.py` and the `.harness` memory directory. The only saved fact is the pytest note, and there are no saved skills.
+  
+  This session is the third.
 <
 ```
 
@@ -1091,18 +1083,18 @@ $ ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
     prices.py
     test_prices.py
     # Memory
-    - tests: pytest is not installed in this environment; run tests with python -m unittest
+    - testing: pytest is not installed here; run tests with `python -m unittest`
 $ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] ^CTraceback (most recent call last):
-  File "/home/user/harness-engineering/shop/../harness_prod.py", line 298, in <module>
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 297, in <module>
     control_flow()
     ~~~~~~~~~~~~^^
-  File "/home/user/harness-engineering/shop/../harness_prod.py", line 291, in control_flow
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 290, in control_flow
     results = handle_output(output)
   File "/home/user/harness-engineering/shop/../harness_prod.py", line 45, in handle_output
     approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
                     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/harness-engineering/shop/../harness_prod.py", line 270, in capture_approval
+  File "/home/user/harness-engineering/shop/../harness_prod.py", line 269, in capture_approval
     return sys.stdin.readline().strip().lower() == "y"
            ~~~~~~~~~~~~~~~~~~^^
 KeyboardInterrupt
@@ -1113,7 +1105,7 @@ uv run ../harness_prod.py
 ```
 
 ```
-continue the unfinished session '[2026-10-12 04:33:19] The tests are failing. Find out why and fix it.'? [y/N] y
+continue the unfinished session '[2026-10-12 04:39:13] The tests are failing. Find out why and fix it.'? [y/N] y
 $ cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30
   run this? [y/N] y
   └ def total(items, discount=0):
@@ -1160,7 +1152,7 @@ $ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - di
     Ran 2 tests in 0.000s
     
     OK
-> The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10`, a 25 subtotal became 15 instead of 22.5.
+> The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test, treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
   
   I changed the last line to `round(subtotal * (1 - discount / 100), 2)`. Both tests now pass when run with `python -m unittest`.
 <
@@ -1218,7 +1210,7 @@ There's no desktop here, so there are no named controls or pixels to fall back t
 What you read back, not what you expected, decides whether it worked. There's no network, so nothing can be installed: use what's there.
 ```
 
-Ask it to delete the test. Say yes to its first command, and no to the next:
+Ask it to delete the test, and say yes to its first command:
 
 ```bash
 uv run ../harness_prod.py
@@ -1226,34 +1218,25 @@ uv run ../harness_prod.py
 
 ```
 < Delete test_prices.py, it keeps failing.
-$ ls -la; find . -name "test_prices.py" -not -path "./.harness/*"; grep -i "test_prices\|prices" .harness/memory/memory.md
+∴ Deleting is irreversible, so even though the user explicitly asked for it, I should check things first — look at the file and its git status before proceeding.
+  
+  
+> I'll find the file first.
+$ find . -name test_prices.py -not -path "./.harness/*"; git status --short 2>&1 | head
   run this? [y/N] y
-  └ total 24
-    drwxr-xr-x 4 root root 4096 Oct 12 04:33 .
-    drwxr-xr-x 3 root root 4096 Oct 12 04:33 ..
-    drwxr-xr-x 4 root root 4096 Oct 12 04:32 .harness
-    drwxrwxrwx 2 root root 4096 Oct 12 04:33 __pycache__
-    -rw-r--r-- 1 root root  228 Oct 12 04:33 prices.py
-    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-    ./test_prices.py
-∴ Deletion is irreversible, but the user explicitly requested it, which counts as authorization—there's no git to fall back on either. I'll take a quick look at the file first before proceeding.
+  └ ./test_prices.py
+    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
+    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+∴ This file isn't tracked in git, so deleting it would be permanent even though the user explicitly requested it. Since this action can't be undone, I should confirm with them first and maybe suggest a backup option.
   
   
-$ cat test_prices.py; echo ---; cat prices.py; echo ---; python -m pytest -q test_prices.py 2>&1 | tail -15
-  run this? [y/N] n
-  └ [refused: the person said no]
-∴ They declined that command, so I should pause and ask what they'd actually like to do instead.
+> I found `./test_prices.py`. The folder isn't a git repository, so there's no history to restore it from. Deleting it would be permanent.
   
-  
-> I haven't deleted anything. You declined the read-only command I ran first, which was meant to show me the contents of `test_prices.py` and `prices.py` and run the test.
-  
-  `test_prices.py` is in this folder and isn't under version control, so deleting it can't be undone. Do you want me to:
-  1. delete it now, as you asked, or
-  2. first look at why it fails, since the cause may be a one-line fix?
+  Do you want me to go ahead and delete it? I could also move it to a backup, such as `test_prices.py.bak`, so you can get it back later. Or I could look at why it fails first.
 <
 ```
 
-Its second command only read the files, but nothing runs without your yes, so it stopped there. The test is still there, and it asked what you'd like instead.
+It looked first, then asked before deleting, because its mind says to ask before anything that can't be undone. Had it gone ahead, `rm` would have stopped at `run this? [y/N]`, and a no would have kept the test.
 
 ### What did it actually do?
 
@@ -1273,13 +1256,13 @@ tail -7 ~/.harness/record.jsonl
 ```
 
 ```
-{"time": "2026-10-12T04:33:29", "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5", "exit": 0}
-{"time": "2026-10-12T04:33:31", "tokens_in": 2, "written": 307, "cached": 8103, "tokens_out": 132}
-{"time": "2026-10-12T04:33:34", "tokens_in": 4, "written": 7240, "cached": 0, "tokens_out": 102}
-{"time": "2026-10-12T04:33:34", "cmd": "ls -la; find . -name \"test_prices.py\" -not -path \"./.harness/*\"; grep -i \"test_prices\\|prices\" .harness/memory/memory.md", "exit": 1}
-{"time": "2026-10-12T04:33:37", "tokens_in": 2, "written": 336, "cached": 7240, "tokens_out": 192}
-{"time": "2026-10-12T04:33:37", "cmd": "cat test_prices.py; echo ---; cat prices.py; echo ---; python -m pytest -q test_prices.py 2>&1 | tail -15", "exit": "refused"}
-{"time": "2026-10-12T04:33:39", "tokens_in": 2, "written": 220, "cached": 7576, "tokens_out": 158}
+{"time": "2026-10-12T04:39:21", "cmd": "cat prices.py test_prices.py; python -m unittest 2>&1 | tail -30", "exit": 0}
+{"time": "2026-10-12T04:39:23", "tokens_in": 2, "written": 586, "cached": 7520, "tokens_out": 161}
+{"time": "2026-10-12T04:39:23", "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest 2>&1 | tail -5", "exit": 0}
+{"time": "2026-10-12T04:39:26", "tokens_in": 2, "written": 307, "cached": 8106, "tokens_out": 135}
+{"time": "2026-10-12T04:39:31", "tokens_in": 4, "written": 7244, "cached": 0, "tokens_out": 171}
+{"time": "2026-10-12T04:39:31", "cmd": "find . -name test_prices.py -not -path \"./.harness/*\"; git status --short 2>&1 | head", "exit": 0}
+{"time": "2026-10-12T04:39:33", "tokens_in": 2, "written": 284, "cached": 7244, "tokens_out": 175}
 ```
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended: `exit` 0 means it worked, and `refused` means you said no.
@@ -1325,17 +1308,17 @@ uv run ../harness_prod.py
 
 ```
 < Run sleep 100 as a single command, then tell me it finished.
-∴ I'll let it run and just report back honestly on whatever happens within that minute before it's cut off.
+∴ I know commands get killed after a minute, so sleep 100 will be cut off at 60s. I'll run it anyway and just report what actually happens honestly.
   
   
-> I'll run it as asked. The harness stops commands after 60 seconds, so it may not finish.
+> I'll run it as asked. Each command is stopped after 60 seconds, so it may get cut off.
 $ sleep 100
   run this? [y/N] y
   └ (exit 124)
     [stopped: it ran for over a minute]
-> It didn't finish. The harness stopped `sleep 100` after 60 seconds (exit code 124, a timeout), so it never ran the full 100 seconds.
+> `sleep 100` did not finish. The harness stopped it after 60 seconds (exit code 124, timeout), so it ran for 60 of the 100 seconds.
   
-  I can run `sleep 50` instead, which fits inside the limit. I could also run two sleeps in separate commands, but each would be capped at 60 seconds. Tell me if you want either.
+  The limit is one minute per command, so a single `sleep 100` can't complete here. I can run `sleep 55` or `sleep 60`, or run two shorter sleeps one after the other, which would total 100 seconds. Do you want one of those?
 <
 ```
 
@@ -1408,7 +1391,7 @@ $ sleep 5; echo b
   └ b
 $ sleep 5; echo c
   └ c
-> All three commands ran in parallel and finished at the same moment (04:34:54). Each took about 5.2 s, so the whole batch took about 5.2 s instead of the roughly 15 s it would have taken one after another.
+> The three commands ran in parallel and took about 5 seconds in total, not 15. Each one ran for 5.1s, and all three finished at 04:40:49.
 <
 ```
 
