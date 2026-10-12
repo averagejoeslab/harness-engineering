@@ -21,8 +21,8 @@ def show(event):                                         # output: the model's w
     if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
-def nested(result):                                      # output: what a command printed, nested under it with |_
-    return "  |_ " + "\n     ".join(result.rstrip("\n").split("\n"))
+def nested(result):                                      # output: what a command printed, nested under it with └
+    return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []

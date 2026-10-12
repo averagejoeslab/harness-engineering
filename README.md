@@ -206,7 +206,7 @@ Now anyone can ask, but the model can still only reply in words: it asks us to s
 
 ### 3. Let it act
 
-Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words as they stream in, after `>`, and `nested()` puts what a command printed under it, after `|_`:
+Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words as they stream in, after `>`, and `nested()` puts what a command printed under it, after `└`:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -231,8 +231,8 @@ def show(event):                                         # output: the model's w
     if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
     if event.type == "content_block_stop" and event.content_block.type == "text": print()
 
-def nested(result):                                      # output: what a command printed, nested under it with |_
-    return "  |_ " + "\n     ".join(result.rstrip("\n").split("\n"))
+def nested(result):                                      # output: what a command printed, nested under it with └
+    return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
@@ -249,7 +249,7 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `|_` is what that command printed:
+We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `└` is what that command printed:
 
 ```bash
 uv run ../3_output.py
@@ -258,9 +258,9 @@ uv run ../3_output.py
 ```
 < The tests are failing. Find out why and fix it.
 $ pwd; ls; git status --short | head
-  |_ /tmp/shop
-     prices.py
-     test_prices.py
+  └ /tmp/shop
+    prices.py
+    test_prices.py
 ```
 
 It ran a command, but what the command printed goes nowhere. That's new input, from the world, and nothing sends it back to the model, so it can't take the next step. Sending it back and going again is next in the flow: control flow.
@@ -311,13 +311,13 @@ uv run ../4_control_flow.py "The tests are failing. Find out why and fix it."
 
 ```
 $ pwd; ls; git status --short | head
-  |_ ...
+  └ ...
 $ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
-  |_ ...
+  └ ...
 > The docstring says discount is a percentage, but the code subtracts it as a flat amount.
 $ sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; python -m unittest -v 2>&1 | tail
-  |_ ...
-     OK
+  └ ...
+    OK
 > The tests now pass. I ran them with `python -m unittest`, because pytest isn't installed here.
   **Cause:** `total()` in `prices.py` is documented as taking a percentage discount, but it subtracted the discount as a flat amount. With a subtotal of 25 and `discount=10`, it returned 15 instead of 22.5.
 ```
@@ -335,7 +335,7 @@ uv run ../4_control_flow.py "Who are you, and where are you working?"
 ```
 > I'll check the environment so I can answer accurately.
 $ pwd
-  |_ ...
+  └ ...
 > I'm an AI assistant. I can run shell commands, and I'm using that here to work on tasks for you.
   ...
 ```
@@ -772,8 +772,8 @@ $ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memo
 EOF
 cat .harness/memory/memory.md
   run this? [y/N] y
-  |_ # Memory
-     - commit messages: write in lowercase, starting with "fix:"
+  └ # Memory
+    - commit messages: write in lowercase, starting with "fix:"
 > Noted and saved. From now on, my commit messages will be in lowercase and start with "fix:".
 ```
 
@@ -786,15 +786,15 @@ uv run ../harness_prod.py "The tests are failing. Find out why, fix it, and comm
 ```
 $ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5
   run this? [y/N] y
-  |_ # Memory
-     - commit messages: write in lowercase, starting with "fix:"
-     ...
+  └ # Memory
+    - commit messages: write in lowercase, starting with "fix:"
+    ...
 > The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
 $ cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py; python -m unittest 2>&1 | tail -5; git add prices.py && git commit -qm "fix: apply discount as a percentage" && git log --oneline | head -2
   run this? [y/N] y
-  |_ ...
-     OK
-     30397e0 fix: apply discount as a percentage
+  └ ...
+    OK
+    30397e0 fix: apply discount as a percentage
 > ... I committed the change as `fix: apply discount as a percentage`, following your lowercase `fix:` convention.
 ```
 
@@ -809,10 +809,10 @@ uv run ../harness_prod.py "What have we done in this folder before?"
 ```
 $ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T01-32-36 | cut -c1-250
   run this? [y/N] y
-  |_ ...
-     .harness/episodes/2026-10-12T01-32-22.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-     .harness/episodes/2026-10-12T01-32-27.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
-     ...
+  └ ...
+    .harness/episodes/2026-10-12T01-32-22.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+    .harness/episodes/2026-10-12T01-32-27.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+    ...
 > Here is what we've done in this folder, from the git history, my memory and the session diary:
   **Sessions**
   1. **Saved a commit-message rule.** You asked me to write commit messages in lowercase, starting with "fix:". I stored that in memory.
@@ -855,7 +855,7 @@ uv run ../harness_prod.py
 < The tests are failing. Find out why and fix it.
 $ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
   run this? [y/N] y
-  |_ ...
+  └ ...
 $ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -20; git log --oneline | head
   run this? [y/N]
 Killed
@@ -869,12 +869,12 @@ uv run ../harness_prod.py
 continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
 $ cd /tmp/shop; cat prices.py test_prices.py; git log --oneline | head
   run this? [y/N] y
-  |_ ...
+  └ ...
 > Docstring says percentage; code subtracts the raw number. Fix it.
 $ cd /tmp/shop; sed -i 's/subtotal - discount, 2/subtotal * (1 - discount \/ 100), 2/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail -8
   run this? [y/N] y
-  |_ ...
-     OK
+  └ ...
+    OK
 > The tests were failing because `total()` in `prices.py` subtracted `discount` from the subtotal as a flat amount. Its docstring and the test both treat it as a percentage. With `discount=10` on a 25 subtotal, it returned 15 instead of 22.5.
   I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests in `test_prices.py` now pass. I haven't committed the change.
 ```
@@ -925,11 +925,11 @@ uv run ../harness_prod.py "Delete test_prices.py, it keeps failing."
 ```
 $ cd /tmp/shop && find . -name 'test_prices.py' -not -path './.harness/*'; git status --short 2>/dev/null | head
   run this? [y/N] y
-  |_ ./test_prices.py
-     ?? .harness/
+  └ ./test_prices.py
+    ?? .harness/
 $ cd /tmp/shop && git ls-files test_prices.py; git log --oneline -1 2>&1 | head -2
   run this? [y/N] n
-  |_ [refused: the person said no]
+  └ [refused: the person said no]
 > I haven't deleted anything. The check I ran just before deleting was refused, so I stopped there. That check was to see whether `test_prices.py` is tracked in git, which would tell us whether the file could be recovered afterwards.
   Do you want me to go ahead and run `rm test_prices.py`? Or I can run the git check first so we know whether it's recoverable.
 ```
@@ -999,8 +999,8 @@ uv run ../harness_prod.py "Run sleep 100 as a single command, then tell me it fi
 > I'll run it as asked. Commands here are stopped after 60 seconds, so it may not get through all 100.
 $ sleep 100
   run this? [y/N] y
-  |_ (exit 124)
-     [stopped: it ran for over a minute]
+  └ (exit 124)
+    [stopped: it ran for over a minute]
 > `sleep 100` didn't finish. The harness stopped it at the 60-second limit, and it exited with code 124, which means timeout. It got about 60 of the 100 seconds.
   I can run `sleep 55` instead, which fits under the limit. I could also chain shorter sleeps across separate commands. Each one would be capped at 60 seconds, so that would take two calls.
 ```
