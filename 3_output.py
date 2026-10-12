@@ -15,10 +15,13 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 # ── output: the one tool ────────────────────────────────────────────────────
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after >, shown as they're written
+thinking = {"type": "adaptive", "display": "summarized"}  # output: ask for a summary of its thinking, to show
+
+def show(event):                                         # output: its thinking after ∴ in gray, its words after >, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type == "text": print()
+    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -41,5 +44,5 @@ def capture_input():                                     # input: captures what 
     return line
 input = capture_input()                                  # input: what a person types while it runs
 
-output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(show, max_tokens=16384, thinking=thinking, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet

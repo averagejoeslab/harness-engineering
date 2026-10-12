@@ -16,10 +16,13 @@ def request_response(each=lambda event: None, **request):   # model interface: r
 SHELL = "sh"                                             # safety: the shell inside the box
 tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after >, shown as they're written
+thinking = {"type": "adaptive", "display": "summarized"}  # output: ask for a summary of its thinking, to show
+
+def show(event):                                         # output: its thinking after ∴ in gray, its words after >, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type == "text": print()
+    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -275,7 +278,7 @@ def control_flow():                                      # control flow: defines
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
-            response = request_response(show, max_tokens=16384, **assemble_context(messages))
+            response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
             output = response.content
             record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
                    cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability

@@ -206,7 +206,7 @@ Now anyone can ask, but the model can still only reply in words: it asks us to s
 
 ### 3. Let it act
 
-Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words as they stream in, after `>`, and `nested()` puts what a command printed under it, after `└`:
+Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's thinking as it streams in, in gray after `∴`, and its words after `>`. `nested()` puts what a command printed under it, after `└`:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -221,15 +221,19 @@ Next in the flow is **output**, which handles what the model sends back. We desc
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`3_output.py`](./3_output.py), `tools`, `show()`, `nested()` and `handle_output()` are added:
+In [`3_output.py`](./3_output.py), `tools`, `thinking`, `show()`, `nested()` and `handle_output()` are added:
 
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after >, shown as they're written
+thinking = {"type": "adaptive", "display": "summarized"}  # output: ask for a summary of its thinking, to show
+
+def show(event):                                         # output: its thinking after ∴ in gray, its words after >, shown as they're written
+    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type == "text": print()
+    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
+
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -245,11 +249,11 @@ def handle_output(output):                               # output: handles the m
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
-output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(show, max_tokens=16384, thinking=thinking, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `>` is what the model said, `$` is a command it ran, and `└` is what that command printed:
+We run it, and type the task at the `<` prompt. Its commands run in `shop/`, on your machine, without asking. From here on, `<` is what you typed, `∴` is the model's thinking, `>` is what it said, `$` is a command it ran, and `└` is what that command printed:
 
 ```bash
 uv run ../3_output.py
@@ -293,7 +297,7 @@ def control_flow():                                      # control flow: defines
     input = " ".join(sys.argv[1:]) or capture_input()
     messages = [{"role": "user", "content": input}]
     while True:
-        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
+        output = request_response(show, max_tokens=16384, thinking=thinking, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
@@ -468,7 +472,7 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
-            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
+            output = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages)).content
         except BadRequestError as e:                     # too long to send: summarize on the next pass
             if "prompt is too long" not in str(e): raise
             drop += 1
