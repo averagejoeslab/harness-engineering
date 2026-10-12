@@ -1003,24 +1003,47 @@ uv run ../harness_prod.py
 
 ```
 < What have we done in this folder before?
-$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls .harness/episodes 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T01-32-36 | cut -c1-250
+$ cd .harness 2>/dev/null && ls; cat memory/memory.md 2>/dev/null; ls skills episodes 2>/dev/null; grep -m1 -H "" episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T03-28-50 | cut -c1-250; cd ..; ls
   run this? [y/N] y
-  └ ...
-    .harness/episodes/2026-10-12T01-32-22.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
-    .harness/episodes/2026-10-12T01-32-27.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
-    ...
-> Here is what we've done in this folder, from the git history, my memory and the session diary:
-  **Sessions**
-  1. **Saved a commit-message rule.** You asked me to write commit messages in lowercase, starting with "fix:". I stored that in memory.
-  2. **Fixed failing tests.** `total()` in `prices.py` subtracted the discount as a flat amount, but the docstring and the test (`discount=10` → 22.5) treat it as a percentage. I changed it to `round(subtotal * (1 - discount / 100), 2)`. Both tests passed, run with `python -m unittest` because pytest isn't installed. I committed it as `fix: apply discount as a percentage`.
-  3. **This session.** You're asking what we've done before.
-  **Git history**
-  - `da8592e` Add prices (`prices.py` and `test_prices.py`)
-  - `30397e0` fix: apply discount as a percentage (a one-line change to `prices.py`)
-  The folder holds a small price-calculation module, `prices.py`, and its tests, `test_prices.py`.
+  └ episodes
+    memory
+    # Memory
+    - commit messages: write them in lowercase, starting with "fix:"
+    episodes:
+    2026-10-12T03-27-56.jsonl
+    2026-10-12T03-28-14.jsonl
+    2026-10-12T03-28-50.jsonl
+    episodes/2026-10-12T03-27-56.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+    episodes/2026-10-12T03-28-14.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+    __pycache__
+    prices.py
+    test_prices.py
+$ cd .harness/episodes; tail -n 3 2026-10-12T03-27-56.jsonl | cut -c1-400; grep -o '"cmd": "[^"]*"' 2026-10-12T03-28-14.jsonl; tail -n 2 2026-10-12T03-28-14.jsonl | cut -c1-600; cd ../..; git log --oneline 2>&1 | head
+  run this? [y/N] y
+  └ {"role": "assistant", "content": [{"id": "toolu_01RRq8WYucCmE7tuNfN9TkDc", "caller": {"type": "direct"}, "input": {"cmd": "mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo \"# Memory\" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'\n- commit messages: write them in lowercase, starting with \"fix:\"\nEOF\ncat .harness/memory/memory.md"}, "name": "shell"
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01RRq8WYucCmE7tuNfN9TkDc", "content": "# Memory\n- commit messages: write them in lowercase, starting with \"fix:\"\n"}]}
+    {"role": "assistant", "content": [{"text": "Noted. From now on I'll write commit messages in lowercase and start them with \"fix:\". I saved that to memory, so it will carry over to future sessions.", "type": "text"}]}
+    "cmd": "cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status --short | head; git log --oneline | head -5"
+    "cmd": "cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30"
+    "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && python -m unittest -v 2>&1 | tail; git -C . rev-parse --show-toplevel 2>&1 | head -1; ls -a"
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01221dB1tHiBo99ZsLUipnRx", "content": "test_no_discount (test_prices.TestTotal.test_no_discount) ... ok\ntest_ten_percent_off (test_prices.TestTotal.test_ten_percent_off) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\nfatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)\n.\n..\n.harness\n.pytest_cache\n__pycache__\nprices.py\ntest_prices.py\n"}]}
+    {"role": "assistant", "content": [{"signature": "CAQSywcKEAgSGAI4AUIIdGhpbmtpbmcSDL3BU8gqy1YQ1P1LIRoMeV55NdheX6E/fjjLIjDwpF9RoA4SCXBH6g7+DjW/PaLhesYBzH4+VxkAaM8LVbrhRf/8z3Iv/ZERswVi0Yoq6AaiyMparBJomsGJmvFbuRzEYZSX105DHb17FyS6qv6hFFytLfExupQzQtCQQuuykqbgz87TRNWSWRlOuI7OfvXUB5RelYp7kxi30mj+XeicUkDBuuNbBEkw6mMf40nMmqZX8eNu8+pBm4RuqfZiip2GwzL8SImSEfNSuw37C7DvtmLnDiyjFtjgngFvMP2qugy+ZxkXFo3LiciugfetalVXDL7DPZCmVQ7DrQrM5n+7helv2eDl3tdT4/kGL4mohtihzBrz1lYNXaDXGqr65Cw/1y0RwcR++vun3EeN7dgHSJZ7Yie1OH9y6pGOUoZ3biYmZOvNZX+kCzsPorxKWbt7MMF+jIFb4qFc1xrCqFpcDh8DDC3+FgWLBz251GaOssDmnEjwKJgAs7vwrx+lGF7OMMlYlpF
+    fatal: not a git repository (or any parent up to mount point /home/user/harness-engineering)
+    Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+> Two earlier sessions are recorded in this folder. The folder is a small shop pricing project with `prices.py` and `test_prices.py`.
+  
+  1. **Commit message preference:** You asked me to write commit messages in lowercase, starting with "fix:". I saved that to memory (`.harness/memory/memory.md`).
+  2. **Failing tests:** You asked me to find out why the tests were failing, fix it, and commit.
+     - **The bug:** `prices.py` subtracted the discount as a flat amount.
+     - **The fix:** It now treats the discount as a percentage: `round(subtotal * (1 - discount / 100), 2)`.
+     - **The result:** Both tests pass (`test_no_discount` and `test_ten_percent_off`).
+     - **The commit:** It most likely never happened, because the folder isn't a git repository. Running `git` there gives "not a git repository". My last command only checked for a repository. The session log ends with that check, so I can't say for certain what happened afterwards.
+  
+  The third session is this one. There are no saved skills.
+  
+  If you want the fix committed, I'd need to run `git init` first. I'll wait for your go-ahead.
+<
 ```
-
-(shortened)
 
 That leaves the task in progress. When the harness starts, **control flow** checks the diary for an unfinished session and offers to carry on. A command that was running may or may not have finished, so the model is told to check:
 
