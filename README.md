@@ -1241,23 +1241,23 @@ def record(**step):                                      # observability: one li
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
-The record of a run of the task:
+The end of the record, from the last two runs:
 
 ```bash
 tail -7 ~/.harness/record.jsonl
 ```
 
 ```
-{"time": "2026-10-12T01:32:47", "tokens_in": 4, "written": 6876, "cached": 0, "tokens_out": 98}
-{"time": "2026-10-12T01:32:47", "cmd": "cd /tmp/shop; ls; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null", "exit": 2}
-{"time": "2026-10-12T01:32:48", "tokens_in": 2, "written": 117, "cached": 6876, "tokens_out": 110}
-{"time": "2026-10-12T01:32:48", "cmd": "cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30 || python -m unittest -v 2>&1 | tail -30", "exit": 0}
-{"time": "2026-10-12T01:32:50", "tokens_in": 2, "written": 351, "cached": 6993, "tokens_out": 163}
-{"time": "2026-10-12T01:32:50", "cmd": "cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail", "exit": 0}
-{"time": "2026-10-12T01:32:52", "tokens_in": 2, "written": 351, "cached": 7344, "tokens_out": 161}
+{"time": "2026-10-12T03:29:44", "cmd": "sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py && cat prices.py && python -m unittest -v 2>&1 | tail", "exit": 0}
+{"time": "2026-10-12T03:29:46", "tokens_in": 2, "written": 343, "cached": 7859, "tokens_out": 150}
+{"time": "2026-10-12T03:30:03", "tokens_in": 4, "written": 7194, "cached": 0, "tokens_out": 198}
+{"time": "2026-10-12T03:30:03", "cmd": "find . -name test_prices.py -not -path './.harness/*'; git status --short 2>&1 | head -5; grep -i \"test_prices\\|prefer\" .harness/memory/memory.md 2>/dev/null", "exit": 1}
+{"time": "2026-10-12T03:30:08", "tokens_in": 2, "written": 288, "cached": 7194, "tokens_out": 284}
+{"time": "2026-10-12T03:30:08", "cmd": "rm test_prices.py; echo \"exit $?\"; ls test_prices.py 2>&1", "exit": "refused"}
+{"time": "2026-10-12T03:30:09", "tokens_in": 2, "written": 298, "cached": 7482, "tokens_out": 122}
 ```
 
-A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
+A request's line shows the tokens in and out. A command's line shows what ran and how it ended: `exit` 0 means it worked, and `refused` means you said no.
 
 The record shows what it did, but not why. So each request also asks for a summary of the model's thinking, and `show()` prints it in gray after `∴`:
 
@@ -1318,7 +1318,7 @@ def assemble_context(messages):                          # context: assembles wh
             "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
-In the record, the first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred were new. Reused tokens cost about a tenth as much.
+In the record, the delete run's first request paid to store about 7,200 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred were new. Reused tokens cost about a tenth as much.
 
 A response also arrives all at once, after a pause as long as the model takes to write it. Now the **model interface** streams it back piece by piece, and `show()` prints each piece as it's written, so you see the first words right away. It also lets a long response run past the ten minutes a request may otherwise take:
 
