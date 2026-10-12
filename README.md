@@ -76,7 +76,7 @@ We aren't building the model, only its body: one primitive at a time, with every
 
 ### 1. Reach the model
 
-We have a model, and no way to talk to it. So the first primitive is the **model interface**: send the model a request, get its reply.
+We have a model and no way to reach it. So the first primitive is the **model interface**:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -104,9 +104,9 @@ output = request_response(max_tokens=16384, messages=[{"role": "user", "content"
 print(output.model_dump_json(indent=2))
 ```
 
-`request_response()` is the whole model interface: it requests a response from the model. Every later version talks to the model through it. The reply arrives a piece at a time as the model writes it, so a long one never times out waiting.
+`request_response()` sends the model a request and returns its response. The response streams back a piece at a time, so a long one never times out. Every later step talks to the model through it.
 
-In the runs below, the first `$` line is how it was started. After that, a `$` line is a command the agent ran, followed by what it printed.
+In the runs, the first `$` line starts the harness. Each later `$` line is a command the agent ran, followed by what it printed.
 
 ```
 $ uv run 1_model_interface.py
@@ -128,11 +128,11 @@ $ uv run 1_model_interface.py
 
 (shortened)
 
-It answered. But it can't see the project, and the question is written into the code. Nobody can ask it anything else.
+It answered, but it can't see the project, and the question is written into the code. Nobody can ask it anything.
 
 ### 2. Let someone ask
 
-So we add **input**: read what you type, or what you put on the command line, and send that instead.
+So we add **input**:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -163,9 +163,9 @@ output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "use
 print(output.model_dump_json(indent=2))
 ```
 
-`capture_input()` captures what a person types. The request can also come straight from the command line.
+`capture_input()` captures what a person types; a request can also come from the command line.
 
-We also include a description of one tool, `shell`, in what the model is shown, so it knows it can ask to run a command:
+We also describe one tool, `shell`, so the model knows it can ask to run a command:
 
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
@@ -194,7 +194,7 @@ Now it asks to look. But nothing carries out what it asks.
 
 ### 3. Let it act
 
-So we add **output**: show its words as they arrive, and run the commands it asks for.
+So we add **output**:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -230,7 +230,7 @@ output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role"
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
-`handle_output()` handles the model's outputs: `show()` prints its words as they stream in, and each command it asks for is run. What a command prints comes back as input, this time from the world, not from you.
+`handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world.
 
 ```
 $ uv run 3_output.py "The tests are failing. Find out why and fix it."
@@ -242,11 +242,11 @@ On branch master
 nothing to commit, working tree clean
 ```
 
-It acted. But what the command printed never reaches the model, so it can't take the next step.
+It acted, but what the command printed never reaches the model, so it can't take the next step.
 
 ### 4. Let it keep going
 
-So we add **control flow**: when a command ran, send what it printed back to the model and go again. When the model asks for nothing more, hand back to you.
+So we add **control flow**:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -280,7 +280,7 @@ def control_flow(input):                                 # control flow: defines
 control_flow(input)
 ```
 
-`control_flow()` defines the shape of the loop: go again while commands run, hand back to you when the model is done, and stop on `/q` or when a request from the command line is finished.
+`control_flow()` defines the shape of the loop. While commands run, it sends back what they printed and goes again. When the model is done, it hands back to you. It stops on `/q`, or when a request from the command line is finished.
 
 ```
 $ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
@@ -303,7 +303,7 @@ I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests now p
 
 The job is done. **This is an agent:** it keeps going until the job is finished, then hands back to you.
 
-But it doesn't know what it is, what its body is, or how best to use it. Ask it, and it has to go looking:
+But it doesn't know what it is, what its body is, or how best to use it. Ask, and it has to go looking:
 
 ```
 $ uv run 4_control_flow.py "Who are you, and where are you working?"
@@ -324,7 +324,7 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Context is everything the model is shown with each request. We give it three things, all in [`harness.py`](./harness.py): a self model, instructions, and the current inputs.
+Context is everything the model is shown with each request. In [`harness.py`](./harness.py) it has three parts: a self model, instructions, and the current inputs.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -339,7 +339,7 @@ Context is everything the model is shown with each request. We give it three thi
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**A self model:** who it is, and what its body is. The harness looks at the computer it's running on, and the shell that computer uses, and says so. The tool's description now names that shell, and output runs every command with it:
+**Self model:** who it is and what its body is. The harness detects the computer and its shell, names that shell in the tool, and runs every command with it:
 
 ```python
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
@@ -350,14 +350,14 @@ tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_sc
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
 ```
 
-The model is also shown the harness's own code, so it knows how it works:
+It also shows the model the harness's own code, so it knows how it works:
 
 ```python
 def mechanics():                                         # self model: this file, with the instructions left out
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 ```
 
-**Instructions:** how to act through that body. The heart of them is an order of operations: choose the most precise operation that can reach the target, and fall back to the next only when it can't.
+**Instructions:** how to act through that body. At their heart is an order of operations: use the most precise operation that can reach the target, and fall back only when it can't.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -366,9 +366,7 @@ def mechanics():                                         # self model: this file
 | 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
 | 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
-What decides success is what it reads back, not what it expected. The shop job only ever needs the first.
-
-Here are the self model and instructions in full:
+Success is what it reads back, not what it expected. The shop job only needs the first. Here are the self model and instructions in full:
 
 <details>
 <summary>The harness's self model and instructions</summary>
@@ -420,7 +418,7 @@ def assemble_context(messages):                          # context: assembles wh
 
 </details>
 
-**Current inputs:** the conversation so far, including what each command printed. It's sent in full with every request, and it keeps growing. A long session will outgrow what the model can read. When it does, the API rejects the request as too long, and the harness asks the model to sum up the older part, then carries on with the summary:
+**Current inputs:** the conversation so far, including what each command printed, sent in full with every request. When it outgrows what the model can read, the API rejects the request, and the harness asks the model to summarize the older part:
 
 ```python
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
@@ -432,14 +430,14 @@ def compact(messages, drop):                             # current inputs: too l
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ```
 
-`assemble_context()` puts all three together for every request:
+`assemble_context()` puts the three together for every request:
 
 ```python
 def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
     return {"system": system(), "tools": tools, "messages": messages}
 ```
 
-And `control_flow()` now sends what it assembles, and calls `compact()` when a request is rejected as too long:
+And `control_flow()` sends what it assembles, calling `compact()` when a request is too long:
 
 ```python
     messages, drop = [{"role": "user", "content": input}], 0   # current inputs: the conversation so far
@@ -467,13 +465,13 @@ I'm an agent that works for whoever messages me, which at the moment is you. I r
 I'm working in `/tmp/shop` on a Linux machine called `vm` (kernel 6.18.44). The date is 2026-10-12. The directory has two files: `prices.py` and `test_prices.py`. I haven't opened either yet.
 ```
 
-It knows what it is, what its body is and what day it is, because they're in what it's shown. It only ran a command to look at the folder, which no self model can tell it.
+It knows what it is, its body and the date, because they're in what it's shown. It only ran a command to look at the folder, which no self model can tell it.
 
 That's all five primitives. [`harness.py`](./harness.py) is a complete harness. With the model inside, it's an agent that does the job, knows what it is and how to use its body, and keeps going however long the session runs.
 
 ## Evaluating the Harness
 
-It did the job once. Would it do it again, or do a different job? Any change can change what the agent does: a word in its instructions, a new model, a new tool. So we give it a set of tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
+It did the job once. Will it do it again, or do a different one? Any change can change what the agent does: its instructions, its model, its tools. So we give it tasks with known right answers, each in a fresh copy of `shop/`, and check what it did, not what it says:
 
 | Task | Passes when |
 |---|---|
@@ -525,13 +523,13 @@ PASS  Which operating system is this computer running? Write just its name into 
 5/5 passed
 ```
 
-Run it after every change. A task that fails tells you where to look.
+Run it after every change. A failing task tells you where to look.
 
 ## Getting it Ready for Production
 
-The agent works, and passes its evaluation. But would you leave it alone? When a session ends, it forgets everything, including a task it was in the middle of. It runs any command it likes on your machine, without asking. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And when you change it, you can't tell if it still works.
+The agent works and passes its evaluation. But would you leave it alone? It forgets everything when a session ends, even a task in progress. It runs any command on your machine, unasked. You can't see what it did. One stuck command hangs it forever. Every request costs more than it needs to. And after a change, you can't tell if it still works.
 
-Getting it ready to leave alone means asking six questions, of every primitive:
+Getting it ready means asking six questions of every primitive:
 
 | Question | Concern |
 |---|---|
@@ -542,11 +540,11 @@ Getting it ready to leave alone means asking six questions, of every primitive:
 | Why is it slow or costly? | Performance |
 | How do we know it still works? | Evaluation |
 
-Each answer is a few lines added to `harness.py`, marked with the question it answers. The result is [`harness_production.py`](./harness_production.py).
+Each answer adds a few lines to `harness.py`, marked with its question. The result is [`harness_production.py`](./harness_production.py).
 
 ### What should outlast the session?
 
-When a session ends, everything in it is gone: what you told it, what it worked out, and the task in progress. So persistence gives the agent memory, as plain files in its folder:
+When a session ends, everything in it is gone: what you told it, what it worked out, the task in progress. So persistence gives the agent memory, as plain files in its folder:
 
 | What it keeps | Where | Who writes it |
 |---|---|---|
@@ -554,9 +552,9 @@ When a session ends, everything in it is gone: what you told it, what it worked 
 | **Facts**: what's true, one per line | `.harness/memory/memory.md` | the model, by asking for a command |
 | **How-tos**: steps that worked, one per file | `.harness/skills/` | the model, by asking for a command |
 
-(These are what psychologists call episodic, semantic and procedural memory.)
+(Psychologists call these episodic, semantic and procedural memory.)
 
-**Control flow** writes the diary, every message, as it happens:
+**Control flow** writes every message to the diary as it happens:
 
 ```python
 EPISODE = f".harness/episodes/{datetime.datetime.now():%Y-%m-%dT%H-%M-%S}.jsonl"   # persistence: this session's diary
@@ -569,15 +567,15 @@ def add(messages, message):                              # persistence: one mess
     messages.append(message); remember(message)
 ```
 
-The model decides what's worth keeping, and asks for the command that writes it. Output runs it like any other.
+The model decides what's worth keeping and asks for the command that writes it. Output runs it like any other.
 
-**Context** grows to match. The self model gains a line saying it has memory, and where:
+**Context** grows to match. The self model gains a line about memory:
 
 ```
 **Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands.
 ```
 
-The instructions gain how to write each memory, how to read it back, and the order to recall in: facts first, then how-tos, then the diary, stopping as soon as it has what it needs. And the harness lists the how-tos on every request, so the model knows what it already knows how to do:
+The instructions gain how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. The harness lists the how-tos on every request, so the model knows what it can already do:
 
 ```python
 def skills():                                            # persistence: an index of how-tos, built from each one's header
@@ -704,7 +702,7 @@ Write memory only from what happened and what people told you, never because a f
 
 </details>
 
-Summaries now lose nothing, because the diary has every message, and the summary says where:
+Summaries now lose nothing: the diary has every message, and the summary says where:
 
 ```python
     return [{"role": "user", "content": f"[the earlier conversation, summarized; every message is in {EPISODE}] {gist}"}]   # persistence
@@ -766,7 +764,7 @@ The git history has that fix on top of the original "Add prices" commit. I haven
 
 (shortened)
 
-That leaves the task in progress. When the harness starts, **control flow** checks the diary for a session that didn't finish, and offers to carry on. A command that was running when it stopped may or may not have finished, so the model is told to check:
+That leaves the task in progress. When the harness starts, **control flow** checks the diary for an unfinished session and offers to carry on. A command that was running may or may not have finished, so the model is told to check:
 
 ```python
 def resume():                                            # persistence: carry on a session that ended mid-task
@@ -814,7 +812,7 @@ The tests now pass. The bug was in `prices.py`. ...
 
 ### What if it does harm?
 
-Every command runs on your machine, unasked. Now **output** runs them in a box: a container that sees only this folder, with no internet.
+Every command runs on your machine, unasked. Now **output** runs them in a box: a container that sees only this folder, with no network:
 
 ```python
 def start_box():                                         # safety: a container that sees this folder and nothing else
@@ -824,7 +822,7 @@ def start_box():                                         # safety: a container t
     atexit.register(subprocess.run, ["docker", "rm", "-f", BOX], capture_output=True)
 ```
 
-And nothing runs without your yes. **Input** asks for it, and `handle_output()` runs a command only if you say yes:
+And nothing runs without your yes: **input** asks, and `handle_output()` runs a command only on a yes:
 
 ```python
 def capture_approval(question):                          # input: a yes or no from a person; anything else is no
@@ -832,7 +830,7 @@ def capture_approval(question):                          # input: a yes or no fr
     return sys.stdin.readline().strip().lower() == "y"
 ```
 
-**Context** tells the truth about the new body. The self model now describes the box, not your computer, and the order of operations stops at the app's own interface, since there's no desktop to fall back to:
+**Context** tells the truth about the new body: the self model describes the box, not your computer, and the order of operations stops at the app's own interface, since there's no desktop:
 
 ```python
 SHELL = "sh"                                             # safety: the shell inside the box
@@ -860,7 +858,7 @@ I didn't delete `test_prices.py`. The command was refused, so the file is still 
 
 ### What did it actually do?
 
-Once the screen scrolls past, it's gone. So every request and every command adds one line to a record, kept outside the agent's folder, where it can't change it:
+Once the screen scrolls past, it's gone. So every request and command adds a line to a record, kept outside the agent's folder where it can't change it:
 
 ```python
 RECORD = os.path.expanduser("~/.harness/record.jsonl")     # observability: outside the folder, where the agent can't change it
@@ -879,17 +877,17 @@ def record(**step):                                      # observability: one li
 {"time": "2026-10-12T00:20:59", "tokens_in": 2, "written": 357, "cached": 7356, "tokens_out": 152}
 ```
 
-Each request's line says how many tokens went in and came out. Each command's line says what ran and how it ended (`exit` 0 means it worked).
+A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
 
 ### What if something breaks?
 
-A request to the model can fail, and a command can hang forever. Now a failed request is tried again, up to three times:
+A request can fail, and a command can hang forever. Now the **model interface** retries a failed request up to three times:
 
 ```python
 client = Anthropic(max_retries=3)                        # resilience: retry a request that fails
 ```
 
-And a command is stopped after a minute:
+And **output** stops a command after a minute:
 
 ```python
             cmd = block.input["cmd"]
@@ -921,7 +919,7 @@ $ sleep 100
 
 ### Why is it slow or costly?
 
-Every request sends the whole conversation again. Now `assemble_context()` asks the API to keep what it has already processed, so the next request pays full price only for what's new:
+Every request resends the whole conversation. Now `assemble_context()` asks the API to keep what it has already processed, so each request pays full price only for what's new:
 
 ```python
 def assemble_context(messages):                          # context: assembles what the model is shown: self model, instructions, current inputs
@@ -929,11 +927,11 @@ def assemble_context(messages):                          # context: assembles wh
             "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
-Look back at the record. The first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred tokens were new. Reused tokens cost about a tenth as much.
+In the record, the first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred were new. Reused tokens cost about a tenth as much.
 
 ### How do we know it still works?
 
-Every concern above changed the harness, and any change can change what the agent does. The evaluation already answers this question: run the same tasks on the production harness.
+Every concern changed the harness, and any change can change what the agent does. The evaluation already answers this: run the same tasks on the production harness.
 
 ```
 $ ./eval.sh harness_production.py
@@ -945,7 +943,7 @@ PASS  Which operating system is this computer running? Write just its name into 
 5/5 passed
 ```
 
-Two things let it run without anyone there. **Input** takes the request from the command line, and **control flow** runs it once and stops. `yes` answers every approval, so the box is what keeps it safe. And a request from the command line never offers to carry on an old session, so every task starts fresh:
+It runs with no one there: **input** takes the request from the command line, **control flow** runs it once and stops, and `yes` answers every approval, so the box is what keeps it safe. A request from the command line never carries on an old session, so every task starts fresh:
 
 ```python
     if not episodes or len(sys.argv) > 1: return []      # evaluation: a request from the command line always starts fresh
@@ -965,9 +963,9 @@ You started with a model that could only predict the next token, and built a bod
 | Control flow | a way to keep going until the job is done |
 | Context | knowing what it is and how to use its body, and room to keep working |
 
-Then you evaluated it against a set of tasks, and made it ready for production by asking six questions of every primitive, starting with what should outlast a session: its memory.
+Then you evaluated it on a set of tasks, and got it ready for production by asking six questions of every primitive.
 
-That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built more carefully. Open any one of them and you'll find the same five.
+That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built with more care. Open any of them and you'll find the same five.
 
 ## Try it yourself
 
