@@ -307,7 +307,7 @@ uv run ../3_output.py
 ```
 < The tests are failing. Find out why and fix it.
 $ pwd; ls; git status --short | head
-  └ /tmp/shop
+  └ /home/user/harness-engineering/shop
     prices.py
     test_prices.py
 ```
