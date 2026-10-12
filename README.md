@@ -1377,20 +1377,24 @@ $ date +%s.%N; sleep 5; echo b; date +%s.%N
 $ date +%s.%N; sleep 5; echo c; date +%s.%N
   run this? [y/N] y
 $ date +%s.%N; sleep 5; echo a; date +%s.%N
-  └ 1791773961.422496989
+  └ 1791775917.158953106
     a
-    1791773966.427166388
+    1791775922.163009858
 $ date +%s.%N; sleep 5; echo b; date +%s.%N
-  └ 1791773961.428881137
+  └ 1791775917.172385231
     b
-    1791773966.432942596
+    1791775922.176169940
 $ date +%s.%N; sleep 5; echo c; date +%s.%N
-  └ 1791773961.369802358
+  └ 1791775917.197577822
     c
-    1791773966.378826200
-> The three commands ran in parallel and took about 5 seconds in total, not 15. I added `date` calls to each command to time them.
-  All three started within about 0.06 s of each other, around 1791773961.4. They each finished about 5.0 s later, at roughly 1791773966.4.
-  The output was `a`, `b` and `c`.
+    1791775922.201058698
+> All three commands ran at the same time. The whole batch took about 5 seconds, not 15.
+  
+  - **Start times:** a, b and c began within about 40 ms of each other (917.159, 917.172 and 917.198).
+  - **End times:** all three finished about 5.00 s after they started (922.163, 922.176 and 922.201).
+  
+  Run one after another, they would have taken about 15 s.
+<
 ```
 
 The model decides which commands can run together. The harness just doesn't make them wait.
