@@ -493,6 +493,10 @@ tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_sc
 ```
 
 ```python
+            done = subprocess.run(block.input["cmd"], shell=True, executable=SHELL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+```
+
+```python
 MACHINE = f"{platform.system()} {platform.release()} ({platform.machine()})"   # self model: the computer the body is on
 ```
 
