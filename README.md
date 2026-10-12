@@ -615,7 +615,7 @@ $ pwd; hostname; uname -sr; ls
 < 
 ```
 
-It ran one command, to look at the folder, not to find out what it is. It knows it's an agent, that its body is a shell, and which model it thinks with, because they're in what it's shown.
+It doesn't have to go looking to find out what it is. It knows it's an agent, that its body is a shell, and where it's working, because they're in what it's shown.
 
 That's all five primitives, and [`harness.py`](./harness.py) is a complete harness. What it lacks is proof: we've seen it do one task, once. Checking that is next.
 
