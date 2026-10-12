@@ -134,7 +134,7 @@ The model answered, but it can't act, so it asks us to share the code. And the r
 
 ### 2. Let someone ask
 
-So we add **input**:
+Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types, and a request can also come from the command line. We also describe one tool, `shell`, so the model knows it can ask to run a command:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -165,13 +165,11 @@ output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "use
 print(output.model_dump_json(indent=2))
 ```
 
-`capture_input()` captures what a person types; a request can also come from the command line.
-
-We also describe one tool, `shell`, so the model knows it can ask to run a command:
-
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
+
+We pass the task on the command line this time, and print what comes back:
 
 ```
 $ uv run 2_input.py "The tests are failing. Find out why and fix it."
@@ -192,7 +190,7 @@ $ uv run 2_input.py "The tests are failing. Find out why and fix it."
 
 (shortened)
 
-Now it asks to look. But nothing carries out what it asks.
+The request now comes from outside the code, and the model asks to act: it wants to run a command to look at the project. But nothing handles its output, so the command never runs. That's next in the flow: output.
 
 ### 3. Let it act
 
