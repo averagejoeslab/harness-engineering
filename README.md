@@ -263,6 +263,8 @@ $ pwd; ls; git status --short | head
     test_prices.py
 ```
 
+This time it went straight to a command, so there's no `>` line.
+
 It ran a command, but what the command printed goes nowhere. That's new input, from the world, and nothing sends it back to the model, so it can't take the next step. Sending it back and going again is next in the flow: control flow.
 
 ### 4. Let it keep going
