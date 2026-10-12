@@ -151,7 +151,7 @@ The model answered, but it can't act, so it asks us to share the code. And the r
 
 ### 2. Let someone ask
 
-Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types into the terminal while the program runs:
+Next in the flow is **input**, which captures what comes in. `capture_input()` reads what a person types into the terminal while the program runs. `/q` or Ctrl-D quits instead:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -170,9 +170,15 @@ In [`2_input.py`](./2_input.py), `capture_input()` is added:
 
 ```python
 # ── input ───────────────────────────────────────────────────────────────────
-def capture_input():                                     # input: captures what a person types
-    return input("> ")
+def capture_input(prompt="> "):                          # input: captures what a person types
+    while True:
+        print(prompt, end="", flush=True)
+        line = sys.stdin.readline()
+        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
+        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
+        prompt = "> "
 input = capture_input()                                  # input: what a person types while it runs
+if input == "/q": sys.exit()
 
 output = request_response(max_tokens=16384, messages=[{"role": "user", "content": input}])
 print(output.model_dump_json(indent=2))
@@ -260,7 +266,7 @@ It ran a command, but what the command printed goes nowhere. That's new input, f
 
 ### 4. Let it keep going
 
-Next in the flow is **control flow**, which defines the shape of the loop. `control_flow()` sends back what the commands printed, and goes again until the model is done. Then it hands back to you for your next message. Because it now asks more than once, `capture_input()` also gives you a way out: `/q`, or Ctrl-D, stops it.
+Next in the flow is **control flow**, which defines the shape of the loop. `control_flow()` sends back what the commands printed, and goes again until the model is done. Then it hands back to you for your next message. `/q` stops it.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -275,18 +281,9 @@ Next in the flow is **control flow**, which defines the shape of the loop. `cont
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-In [`4_control_flow.py`](./4_control_flow.py), `capture_input()` learns to stop, and `control_flow()` is added:
+In [`4_control_flow.py`](./4_control_flow.py), `control_flow()` is added:
 
 ```python
-# ── input ───────────────────────────────────────────────────────────────────
-def capture_input(prompt="> "):                          # input: captures what a person types
-    while True:
-        print(prompt, end="", flush=True)
-        line = sys.stdin.readline()
-        if not line: return "/q"                         # end of input (Ctrl-D): nothing more is coming
-        if line.strip(): return line.rstrip("\n")        # Enter on an empty line: a fresh prompt, as in a terminal
-        prompt = "> "
-
 # ── control flow ────────────────────────────────────────────────────────────
 def control_flow():                                      # control flow: defines the shape of the loop
     chat = len(sys.argv) < 2                             # a request on the command line runs once; otherwise it's a chat
