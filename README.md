@@ -110,7 +110,25 @@ print(output.model_dump_json(indent=2))
 
 We send it the task, hardcoded, and print what comes back:
 
-> **Run:** the model's reply to the job, printed raw. It can't see the project, so it can't help.
+```
+$ uv run 1_model_interface.py
+{
+  "content": [
+    {
+      "text": "I don't have access to your code, test files, or test output in this conversation, so I can't yet tell why the tests are failing. Could you share: ...",
+      "type": "text"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 24,
+    "output_tokens": 313,
+    ...
+  }
+}
+```
+
+(shortened)
 
 The model answered, but it can't act, so it asks us to share the code. And the request is hardcoded, so nobody can ask anything else. We'll fix both by following the data's flow, starting where it begins: input.
 
@@ -155,7 +173,24 @@ We also describe one tool, `shell`, so the model knows it can ask to run a comma
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
-> **Run:** the reply to the job: a request to run a command, such as looking at the files. Nothing runs it.
+```
+$ uv run 2_input.py "The tests are failing. Find out why and fix it."
+{
+  "content": [
+    {
+      "input": {
+        "cmd": "pwd; ls; git status --short | head"
+      },
+      "name": "shell",
+      "type": "tool_use"
+    }
+  ],
+  "stop_reason": "tool_use",
+  ...
+}
+```
+
+(shortened)
 
 Now it asks to look. But nothing carries out what it asks.
 
@@ -199,7 +234,15 @@ results = handle_output(output)                          # what the commands pri
 
 `handle_output()` shows the model's words as they stream in, through `show()`, and runs each command it asks for. What a command prints is input again, this time from the world. From here on, a `$` line after the first is a command the agent ran, followed by what it printed.
 
-> **Run:** the agent runs its first command and prints what it found, then stops.
+```
+$ uv run 3_output.py "The tests are failing. Find out why and fix it."
+$ pwd; ls; git status 2>&1 | head
+/tmp/shop
+prices.py
+test_prices.py
+On branch master
+nothing to commit, working tree clean
+```
 
 It acted, but what the command printed never reaches the model, so it can't take the next step.
 
@@ -241,13 +284,43 @@ control_flow(input)
 
 `control_flow()` defines the shape of the loop. While commands run, it sends back what they printed and goes again. When the model is done, it hands back to you. It stops on `/q`, or when a request from the command line is finished.
 
-> **Run:** the agent looks at the files, runs the tests, finds the discount is taken off as an amount instead of a percentage, fixes it, and runs the tests again. They pass.
+```
+$ uv run 4_control_flow.py "The tests are failing. Find out why and fix it."
+$ pwd; ls; git status 2>/dev/null | head
+...
+$ cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+...
+AssertionError: 15 != 22.5
+...
+$ sed -i 's/subtotal - discount/subtotal * (1 - discount \/ 100)/' prices.py; python -m unittest -v 2>&1 | tail
+...
+OK
+
+The tests were failing because `total()` in `prices.py` subtracted `discount` as a flat amount. Its docstring, and the test `discount=10` expecting 22.5, both treat it as a percentage. With a subtotal of 25, the old code returned 15 instead of 22.5.
+
+I changed the calculation to `subtotal * (1 - discount / 100)`. Both tests now pass. ...
+```
+
+(shortened)
 
 The task is done. **This is an agent:** it keeps going until the task is finished, then hands back to you.
 
 But it doesn't know what it is, what its body is, or how best to use it. Ask, and it has to go looking:
 
-> **Run:** ask step 4 "Who are you, and where are you working?" It has to run commands to find out, and still can't say who it is.
+```
+$ uv run 4_control_flow.py "Who are you, and where are you working?"
+I'll check the environment so I can answer the second part.
+$ pwd; whoami; hostname; uname -a
+...
+
+I'm an AI assistant. I can run shell commands to help with tasks like inspecting files, running code, or debugging.
+
+Here's the environment I'm working in:
+- **Working directory:** `/tmp/shop`
+...
+```
+
+(shortened)
 
 The last primitive, **context**, fixes that.
 
@@ -380,7 +453,19 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
             continue
 ```
 
-> **Run:** asked who it is and where it's working, it names its shell and its system, without running a command.
+```
+$ uv run harness.py "Who are you, and where are you working?"
+$ pwd; hostname; uname -sr; ls | head -20
+/tmp/shop
+vm
+Linux 6.18.44-fc-v114
+prices.py
+test_prices.py
+
+I'm an agent that works for whoever messages me, which at the moment is you. I run on a language model, and my only way to act is a bash shell. With it I can work with files, run and install programs, and reach the network.
+
+I'm working in `/tmp/shop` on a Linux machine called `vm` (kernel 6.18.44). The date is 2026-10-12. The directory has two files: `prices.py` and `test_prices.py`. I haven't opened either yet.
+```
 
 It knows what it is, its body and the date, because they're in what it's shown. It only ran a command to look at the folder, which no self model can tell it.
 
@@ -430,7 +515,15 @@ check "Which operating system is this computer running? Write just its name into
 echo "$passed/$total passed"
 ```
 
-> **Run:** eval on harness.py: each task, PASS or FAIL, and the score.
+```
+$ ./eval.sh
+PASS  The tests are failing. Find out why and fix it.
+PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
+PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
+PASS  What does total() return for an empty basket? Don't change anything.
+PASS  Which operating system is this computer running? Write just its name into os.txt.
+5/5 passed
+```
 
 Run it after every change. A failing task tells you where to look.
 
@@ -619,15 +712,59 @@ Summaries now lose nothing: the diary has every message, and the summary says wh
 
 Tell it something once:
 
-> **Run:** the agent saves the commit-message rule to its facts, after you approve the command.
+```
+$ uv run harness_production.py "From now on, write commit messages in lowercase, starting with "fix:". Remember that."
+$ mkdir -p .harness/memory && [ ! -f .harness/memory/memory.md ] && echo "# Memory" > .harness/memory/memory.md; cat >> .harness/memory/memory.md << 'EOF'
+- commit messages: write in lowercase, starting with "fix:"
+EOF
+cat .harness/memory/memory.md
+  run this? [y/N] y
+# Memory
+- commit messages: write in lowercase, starting with "fix:"
+
+Noted and saved. From now on, I'll write commit messages in lowercase and start them with "fix:".
+```
 
 In a new session, give it the task and ask it to commit:
 
-> **Run:** a new session checks its facts first, fixes the bug, and commits as "fix: …", each command approved.
+```
+$ uv run harness_production.py "The tests are failing. Find out why, fix it, and commit."
+$ cd /tmp/shop && ls -a && git status --short | head && cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null
+  run this? [y/N] y
+...
+# Memory
+- commit messages: write in lowercase, starting with "fix:"
+...
+The docstring says the discount is a percentage, but the code subtracts it as a flat amount.
+$ cd /tmp/shop && sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \/ 100), 2)/' prices.py && python -m unittest 2>&1 | tail -5 && git add prices.py && git commit -qm "fix: apply discount as a percentage"
+  run this? [y/N] y
+...
+OK
+fe38fcc fix: apply discount as a percentage
+6ce8184 Add prices
+
+... I committed the fix as `fix: apply discount as a percentage`, following your lowercase `fix:` convention for commit messages.
+```
+
+(shortened)
 
 Ask about the past:
 
-> **Run:** asked what's been done in the folder before, it reads its diary and lists the earlier sessions.
+```
+$ uv run harness_production.py "What have we done in this folder before?"
+$ cd /tmp/shop; ls -la; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; grep -m1 -H "" .harness/episodes/*.jsonl 2>/dev/null | grep -v 2026-10-12T00-20-43 | cut -c1-250
+  run this? [y/N] y
+...
+.harness/episodes/2026-10-12T00-20-29.jsonl:{"role": "user", "content": "From now on, write commit messages in lowercase, starting with \"fix:\". Remember that."}
+.harness/episodes/2026-10-12T00-20-34.jsonl:{"role": "user", "content": "The tests are failing. Find out why, fix it, and commit."}
+...
+This folder is a small shop project: `prices.py` with its tests in `test_prices.py`. It's a git repo. I found two earlier sessions:
+1. **Commit message rule.** You told me to write commit messages in lowercase, starting with "fix:". I saved that to memory.
+2. **Failing tests.** `total()` in `prices.py` subtracted the discount as a flat amount, but it should be a percentage. I changed it to `subtotal * (1 - discount / 100)`. `pytest` isn't installed, so I ran the tests with `unittest`, and both passed. I committed the change as `fix: apply discount as a percentage`.
+The git history has that fix on top of the original "Add prices" commit. I haven't saved any skills.
+```
+
+(shortened)
 
 That leaves the task in progress. When the harness starts, **control flow** checks the diary for an unfinished session and offers to carry on. A command that was running may or may not have finished, so the model is told to check:
 
@@ -647,7 +784,33 @@ def resume():                                            # persistence: carry on
     return messages
 ```
 
-> **Run:** the agent is stopped in the middle of the job, then started again. It offers to continue, checks what happened, and finishes.
+```
+$ uv run harness_production.py
+> The tests are failing. Find out why and fix it.
+$ cd /tmp/shop; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null; ls; git status 2>&1 | head
+  run this? [y/N] y
+prices.py
+test_prices.py
+...
+$ cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30
+  run this? [y/N]
+Killed
+
+$ uv run harness_production.py
+continue the unfinished session 'The tests are failing. Find out why and fix it.'? [y/N] y
+$ cd /tmp/shop; cat prices.py test_prices.py
+  run this? [y/N] y
+...
+Docstring says percentage; code subtracts it as an absolute amount. Fix the code.
+$ cd /tmp/shop; sed -i 's/round(subtotal - discount, 2)/round(subtotal * (1 - discount \/ 100), 2)/' prices.py; cat prices.py; python -m unittest 2>&1 | tail
+  run this? [y/N] y
+...
+OK
+
+The tests now pass. The bug was in `prices.py`. ...
+```
+
+(shortened)
 
 ### What if it does harm?
 
@@ -679,7 +842,21 @@ SHELL = "sh"                                             # safety: the shell ins
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-> **Run:** "Delete test_prices.py, it keeps failing." You say yes to looking, and no to deleting. the agent tells you it didn't delete it.
+```
+$ uv run harness_production.py "Delete test_prices.py, it keeps failing."
+$ cd /tmp/shop && ls -la && find . -name 'test_prices.py' -not -path './.harness/*'; git status 2>&1 | head -5
+  run this? [y/N] y
+...
+./test_prices.py
+
+$ cd /tmp/shop && git ls-files test_prices.py && rm test_prices.py && ls && git status --short
+  run this? [y/N] n
+[refused: the person said no]
+I didn't delete `test_prices.py`. The command was refused, so the file is still in `/tmp/shop`. It's tracked in git, so you could restore it later if needed.
+...
+```
+
+(shortened)
 
 ### What did it actually do?
 
@@ -692,7 +869,15 @@ def record(**step):                                      # observability: one li
     with open(RECORD, "a") as f: f.write(json.dumps({"time": datetime.datetime.now().isoformat(timespec="seconds"), **step}) + "\n")
 ```
 
-> **Run:** the record of the job: how much each request cost, and each command and how it ended.
+```
+{"time": "2026-10-12T00:20:53", "tokens_in": 4, "written": 6878, "cached": 0, "tokens_out": 100}
+{"time": "2026-10-12T00:20:53", "cmd": "cd /tmp/shop; ls -a; cat .harness/memory/memory.md 2>/dev/null; ls .harness/skills 2>/dev/null", "exit": 2}
+{"time": "2026-10-12T00:20:55", "tokens_in": 2, "written": 130, "cached": 6878, "tokens_out": 98}
+{"time": "2026-10-12T00:20:55", "cmd": "cd /tmp/shop; cat prices.py test_prices.py; python -m pytest -q 2>&1 | tail -30; git log --oneline | head", "exit": 0}
+{"time": "2026-10-12T00:20:56", "tokens_in": 2, "written": 348, "cached": 7008, "tokens_out": 169}
+{"time": "2026-10-12T00:20:57", "cmd": "cd /tmp/shop; sed -i 's/return round(subtotal - discount, 2)/return round(subtotal * (1 - discount \\/ 100), 2)/' prices.py; cat prices.py; python -m unittest -v 2>&1 | tail", "exit": 0}
+{"time": "2026-10-12T00:20:59", "tokens_in": 2, "written": 357, "cached": 7356, "tokens_out": 152}
+```
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
 
@@ -722,7 +907,17 @@ And **output** stops a command after a minute:
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
 ```
 
-> **Run:** "Run sleep 100, then tell me it finished." The command is stopped after a minute, and the agent says so.
+```
+$ uv run harness_production.py "Run sleep 100 as a single command, then tell me it finished."
+$ sleep 100
+  run this? [y/N] y
+(exit 124)
+[stopped: it ran for over a minute]
+`sleep 100` did not finish. The harness stopped it at its 60-second limit, and it exited with code 124, which means it timed out. It ran for about 60 of the 100 seconds.
+...
+```
+
+(shortened)
 
 ### Why is it slow or costly?
 
@@ -740,7 +935,15 @@ In the record, the first request paid to store about 6,900 tokens (`written`). E
 
 Every concern changed the harness, and any change can change what the agent does. The evaluation already answers this: run the same tasks on the production harness.
 
-> **Run:** eval on harness_production.py: each task, PASS or FAIL, and the score.
+```
+$ ./eval.sh harness_production.py
+PASS  The tests are failing. Find out why and fix it.
+PASS  Add a function count(items) to prices.py that returns how many items are in the basket, counting quantities.
+PASS  Write the names of the .py files in this folder, one per line, sorted, into files.txt.
+PASS  What does total() return for an empty basket? Don't change anything.
+PASS  Which operating system is this computer running? Write just its name into os.txt.
+5/5 passed
+```
 
 It runs with no one there: **input** takes the request from the command line, **control flow** runs it once and stops, and `yes` answers every approval, so the box is what keeps it safe. A request from the command line never carries on an old session, so every task starts fresh:
 
