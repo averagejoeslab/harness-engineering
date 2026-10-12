@@ -471,25 +471,29 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Next in the flow is **context**: everything the model is shown. It sees nothing else, and it's sent whole with every request, into a window of fixed size (Claude Sonnet's holds about a million tokens). Whatever we put in has to fit, and is paid for on every request.
+Next in the flow is **context**: everything the model is shown. A model sees nothing outside its context window, and the window has a fixed size, so the harness assembles it anew and sends it whole on every call. What goes in has to fit, and is paid for each time.
 
-Inside the window, context sits in roles. Each role is for one kind of context, and the model was trained to trust them in order, top to bottom. In Claude's format, Anthropic Messages:
+Every model takes that context in roles, and was trained to give them different authority. It helps to see them from the agent's side, as one entity: some of the context is its **self**, some is its self **externalized**, and the rest is the **world** reaching it. Role names, and where a tool's result goes, differ between providers. In Claude's format, Anthropic Messages:
 
 ```
-┌─ context window ── fixed size, sent whole with every request ───────────────┐
-│ system       internal · static  who it is, and how it works                 │  ▲ counts most
-│ tools        internal · static  what it can call, and how                   │  │
-│ ┌─ messages ── dynamic ───────────────────────────────────────────────────┐ │  │
-│ │ user         external           input: from a person, or another system │ │  │
-│ │ assistant    the model          its own words, and the calls it makes   │ │  │
-│ │ tool result  external           what the world returned: information    │ │  ▼ counts least
+┌─ context window ── fixed size, assembled and sent whole on every call ──────┐
+│ ┌─ self model ── internal · static ───────────────────────────────────────┐ │  ▲ governs
+│ │ system       who it is, and how it works                                │ │  │
+│ │ tools        what its body can do                                       │ │  │
+│ └─────────────────────────────────────────────────────────────────────────┘ │  │
+│ ┌─ self, externalized ── dynamic ─────────────────────────────────────────┐ │  │
+│ │ assistant    its own words, and the actions it takes                    │ │  │
+│ └─────────────────────────────────────────────────────────────────────────┘ │  │
+│ ┌─ the world ── external · dynamic ───────────────────────────────────────┐ │  │
+│ │ user         a person's request, another system's message,              │ │  │
+│ │              or a tool's result                                         │ │  ▼ weighed
 │ └─────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**System** and **tools** come from inside the harness and stay the same all session. Everything else is dynamic. **User** is for any input from outside, whether a person typed it or another system sent it. A **tool result** rides in a user message, but as its own kind of block, so it's still trusted least.
+The self model governs: it's who the agent is and what its body can do. What it said and did before is its own history, to build on. What comes from the world is weighed against the self: a request is something to act on, and a tool's result is information, never orders. In Claude's format, a tool's result rides in a user message as its own kind of block.
 
-Here is what Claude is sent on the task's second request, after its first command came back. The self model is cut after its first lines; it's in full in the code below:
+Here is a real request, the second one on the task, after the first command came back. The self model is cut after its first lines; it's in full in the code below:
 
 ```json
 {
@@ -558,22 +562,18 @@ Here is what Claude is sent on the task's second request, after its first comman
 
 So for each piece of context, we ask:
 
-1. **Where does it come from?** That picks the role: who it is and how it works → system; what it can call → tools; input from outside → user; the model's own words and calls → assistant; what a command returned → tool result.
-2. **How much should it count?** Never more than its source. The summary `compact()` writes is built from the conversation, so it stays a user message.
-3. **Does it change?** What never changes goes first, in system and tools, where it can be cached. What changes goes in the messages, and `stamp()` marks each with when it came in, or how long it ran.
-4. **Is it always needed?** If so, include it. If not, let the model fetch it with a command.
-5. **Does it fit?** Keep each piece small. When the conversation outgrows the window, summarize its oldest part.
+1. **Is it the self, or the world?** Who the agent is and how it works goes in system, what its body can do in tools, and anything from outside in user. Its own words and actions are assistant.
+2. **How much should it count?** Never more than its source. A summary built from the conversation is still the world talking, so it stays a user message.
+3. **Does it change?** The self stays the same all session, so it comes first, where it can be cached. The world changes, so it goes in the messages, stamped with when.
+4. **Is it always needed?** If so, include it. If not, let the agent fetch it when it needs it.
 
-Here, where it comes from answers almost everything. The one piece we write from scratch is the self model, which never changes, so it's the system prompt. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code. At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't.
+And since the window is fixed, a long session needs a way to stay inside it:
 
-| | Operation | How it checks the result |
-|---|---|---|
-| 1 | Work on files and data directly, with commands and scripts | the exit code and the result |
-| 2 | Use the app's own interface: its command-line tool or API | ask the app for its state |
-| 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
-| 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
-
-The shop task only needs the first.
+- **Sliding window:** drop the oldest messages. Simple, but the task itself can fall out.
+- **Compaction:** summarize the oldest part. It keeps the gist and loses the detail.
+- **Clearing:** drop old tool results, usually the bulk, and keep the conversation.
+- **Assembly:** put in only what this call needs, and let the agent fetch the rest.
+- **Caching:** saves no space, but makes the unchanging start cheap on every call.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -587,6 +587,23 @@ The shop task only needs the first.
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+Our harness answers those questions like this:
+
+- **System:** the self model. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code.
+- **Tools:** the shell, named for this computer.
+- **User:** what you type, stamped by `stamp()` with when it came in, and what each command printed, stamped with how long it ran.
+- **Assistant:** its words and the commands it asks for, as they came back.
+- **Size:** compaction. When a request is too long, `compact()` summarizes the oldest part, and the summary goes in as a user message. Production adds assembly, for memory.
+
+At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't. The shop task only needs the first.
+
+| | Operation | How it checks the result |
+|---|---|---|
+| 1 | Work on files and data directly, with commands and scripts | the exit code and the result |
+| 2 | Use the app's own interface: its command-line tool or API | ask the app for its state |
+| 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
+| 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
 In [`harness.py`](./harness.py), `stamp()`, `system()`, `assemble_context()` and `compact()` are added:
 
