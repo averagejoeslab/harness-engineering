@@ -471,109 +471,27 @@ The last primitive, **context**, fixes that.
 
 ### 5. Give it context
 
-Next in the flow is **context**: everything the model is shown. A model sees nothing outside its context window, and the window has a fixed size, so the harness assembles it anew and sends it whole on every call. What goes in has to fit, and is paid for each time.
+Next is **context**: what the model is shown on each call. It's best understood from the agent's perspective. Context is its working memory, everything it has in mind at this moment. Whatever isn't in its context, the agent doesn't have in mind, so what we put there, and how, shapes everything it does.
 
-Every model takes that context in roles, and was trained to give them different authority. It helps to see them from the agent's side, as one entity: some of the context is its **self**, some is its self **externalized**, and the rest is the **world** reaching it. Role names, and where a tool's result goes, differ between providers. In Claude's format, Anthropic Messages:
+Once we know which chunks we want in context, how we organize them is decided by the roles available and their hierarchy of authority. Every chunk has to sit in a role, and the model learned in training how much authority each role carries. For Claude, the roles look like this:
 
 ```
-┌─ context window ── fixed size, assembled and sent whole on every call ──────┐
-│ ┌─ self model ── internal · static ───────────────────────────────────────┐ │  ▲ governs
-│ │ system       who it is, and how it works                                │ │  │
-│ │ tools        what its body can do                                       │ │  │
-│ └─────────────────────────────────────────────────────────────────────────┘ │  │
-│ ┌─ self, externalized ── dynamic ─────────────────────────────────────────┐ │  │
-│ │ assistant    its own words, and the actions it takes                    │ │  │
-│ └─────────────────────────────────────────────────────────────────────────┘ │  │
-│ ┌─ the world ── external · dynamic ───────────────────────────────────────┐ │  │
-│ │ user         a person's request, another system's message,              │ │  │
-│ │              or a tool's result                                         │ │  ▼ weighed
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
+system      the mind: who it is, its drives, how it operates   ▲ most authority
+tools       the body: what it can do, and how                  │
+user        the world: people and programs reaching it         │
+assistant   the self, acting: its words and actions            │
+user        a tool's result: what the world returned           ▼ least
 ```
 
-The self model governs: it's who the agent is and what its body can do. What it said and did before is its own history, to build on. What comes from the world is weighed against the self: a request is something to act on, and a tool's result is information, never orders. In Claude's format, a tool's result rides in a user message as its own kind of block.
+To place a chunk, we ask: who does it serve, how much does it matter, and where did it come from? The answers pick its role, and its role should never give it more authority than its source.
 
-Here is a real request, the second one on the task, after the first command came back. The self model is cut after its first lines; it's in full in the code below:
+With our chunks organized, one limit remains: the window they go into has a fixed size. The harness assembles context fresh on each call, and as a session grows, the window fills. It can count tokens to see that coming, or simply wait for the "too long" error. Either way, it has to make room:
 
-```json
-{
-  "model": "claude-sonnet-5-5",
-  "max_tokens": 16384,
-  "system": [
-    {
-      "type": "text",
-      "cache_control": {
-        "type": "ephemeral"
-      },
-      "text": "# Self Model\n\n## Mind\n\n**Identity:** You are an agent, working for the person who messages you.\n…"
-    }
-  ],
-  "tools": [
-    {
-      "name": "shell",
-      "description": "Run a command in /bin/bash",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "cmd": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "cmd"
-        ]
-      }
-    }
-  ],
-  "messages": [
-    {
-      "role": "user",
-      "content": "[2026-10-12 04:59:27] The tests are failing. Find out why and fix it."
-    },
-    {
-      "role": "assistant",
-      "content": [
-        {
-          "id": "toolu_01NTcqTYaJRsMweGCJZ9nT8g",
-          "caller": {
-            "type": "direct"
-          },
-          "input": {
-            "cmd": "pwd; ls -la; git status 2>&1 | head"
-          },
-          "name": "shell",
-          "type": "tool_use"
-        }
-      ]
-    },
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "tool_result",
-          "tool_use_id": "toolu_01NTcqTYaJRsMweGCJZ9nT8g",
-          "content": "[2026-10-12 04:59:28, ran 0.0s] /home/user/harness-engineering/shop\ntotal 16\ndrwxr-xr-x 2 root root 4096 Oct 12 04:59 .\ndrwxr-xr-x 6 root root 4096 Oct 12 03:44 ..\n-rw-r--r-- 1 root root  216 Oct 12 04:59 prices.py\n-rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py\nOn branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean\n"
-        }
-      ]
-    }
-  ]
-}
-```
-
-So for each piece of context, we ask:
-
-1. **Is it the self, or the world?** Who the agent is and how it works goes in system, what its body can do in tools, and anything from outside in user. Its own words and actions are assistant.
-2. **How much should it count?** Never more than its source. A summary built from the conversation is still the world talking, so it stays a user message.
-3. **Does it change?** The self stays the same all session, so it comes first, where it can be cached. The world changes, so it goes in the messages, stamped with when.
-4. **Is it always needed?** If so, include it. If not, let the agent fetch it when it needs it.
-
-And since the window is fixed, a long session needs a way to stay inside it:
-
-- **Sliding window:** drop the oldest messages. Simple, but the task itself can fall out.
-- **Compaction:** summarize the oldest part. It keeps the gist and loses the detail.
-- **Clearing:** drop old tool results, usually the bulk, and keep the conversation.
-- **Assembly:** put in only what this call needs, and let the agent fetch the rest.
-- **Caching:** saves no space, but makes the unchanging start cheap on every call.
+| Strategy | What it does | Keeps | Loses |
+|---|---|---|---|
+| Sliding window | drops the oldest messages | the recent | the start, maybe the task |
+| Compaction | summarizes the oldest part | the gist | the detail |
+| Cherry-picked assembly | includes only what this moment needs | focus | the rest, until it's fetched |
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -588,15 +506,15 @@ And since the window is fixed, a long session needs a way to stay inside it:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Our harness answers those questions like this:
+In [`harness.py`](./harness.py), context is assembled like this:
 
-- **System:** the self model. Its **mind**: who it is, the model it thinks with, its loop, when and where it was born, and how carefully to change things. Its **body**: the computer and its shell, how to act through it, and the harness's own code.
-- **Tools:** the shell, named for this computer.
-- **User:** what you type, stamped by `stamp()` with when it came in, and what each command printed, stamped with how long it ran.
-- **Assistant:** its words and the commands it asks for, as they came back.
-- **Size:** compaction. When a request is too long, `compact()` summarizes the oldest part, and the summary goes in as a user message. Production adds assembly, for memory.
+- **System, the mind:** who it is, what drives it, the model it thinks with, its loop, when and where it was born, how carefully to change things, and its own harness code.
+- **Tools, the body:** the shell, named for this computer, with how to use it.
+- **User, the world:** what you type, stamped with when it came in, and each command's result, stamped with how long it ran, so it always knows "now".
+- **Assistant, the self acting:** its words and commands, as they came back.
+- **Size:** it waits for the "too long" error, then compacts: `compact()` summarizes the oldest part into a user message.
 
-At the heart of the body is an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't. The shop task only needs the first.
+The body's description centers on an order of operations: use the most precise operation that can reach the target, read the result back, and fall back only when it can't. The shop task only needs the first.
 
 | | Operation | How it checks the result |
 |---|---|---|
@@ -605,7 +523,74 @@ At the heart of the body is an order of operations: use the most precise operati
 | 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
 | 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
-In [`harness.py`](./harness.py), `stamp()`, `system()`, `assemble_context()` and `compact()` are added:
+Here's what Claude is sent on the task's second request, after its first command came back. The mind and the body are cut after their first lines:
+
+```json
+{
+  "model": "claude-sonnet-5-5",
+  "max_tokens": 16384,
+  "system": [
+    {
+      "type": "text",
+      "cache_control": {
+        "type": "ephemeral"
+      },
+      "text": "# Mind\n\n**Identity:** You are an agent, working for the person who messages you.\n…"
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cmd"
+        ]
+      },
+      "description": "Run a command in /bin/bash, on Linux 6.18.44-fc-v114 (x86_64). This shell is your body: your only way to observe and act. …"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "[2026-10-12 05:55:55] The tests are failing. Find out why and fix it."
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "id": "toolu_014exmXq8Ni9YmAX3qQ7iFNJ",
+          "caller": {
+            "type": "direct"
+          },
+          "input": {
+            "cmd": "ls -la; git log --oneline | head; git status --short"
+          },
+          "name": "shell",
+          "type": "tool_use"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_014exmXq8Ni9YmAX3qQ7iFNJ",
+          "content": "[2026-10-12 05:55:57, ran 0.0s] total 16\ndrwxr-xr-x 2 root root 4096 Oct 12 04:59 .\ndrwxr-xr-x 6 root root 4096 Oct 12 03:44 ..\n-rw-r--r-- 1 root root  216 Oct 12 04:59 prices.py\n-rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py\na4426cf Rebuild step 5: the window, roles from the agent's side, Claude's format, the questions, ways to fit, then our answers\n05931df Fix steps 3 to 5 showing production's output and control flow code\n59ad46c Show a real request, as Claude is sent it, before the questions in step 5\na21416c Show the context window's roles as a hierarchy by trust; user is any outside input\n15a485e Open step 5 with the window, the roles and their weight, Claude's format, and the questions that place context\n2138aef Show step 5 and production's runs with where the session was born\n13f61ea Born says when and where the session began; every command runs from there\n42f37d6 Remember how to run the tests instead of a commit rule, and show the runs that follow\n8ed4919 Show production's runs with the new context\n163319e Show the recall run with the new context\n"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`stamp()`, `system()`, `body()`, `assemble_context()` and `compact()` are added:
 
 ````python
 # ── context ─────────────────────────────────────────────────────────────────
@@ -618,49 +603,43 @@ def stamp(text, start=None):                             # current inputs: when 
     return f"[{now:%Y-%m-%d %H:%M:%S}{ran}] {text}"
 
 def mechanics():                                         # self model: this file, with the self model left out
-    return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
+    return re.sub(r"^def (system|body)\(\):.*?(?=^def )", r"def \1(): ...  # left out: it is what you are reading\n\n", open(__file__).read(), flags=re.S | re.M)
 
-def system():                                            # self model: mind and body
-    return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Self Model
-
-## Mind
+def system():                                            # self model: the mind, as the system prompt
+    return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Mind
 
 **Identity:** You are an agent, working for the person who messages you.
-**Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized.
+**Drives:** do what you're asked, fully and correctly. Know, don't guess: check what you do by reading it back.
+**Model:** you think with this model, within what you're shown each time: this mind, your body, and this session's messages. When the messages grow too long, the older part is summarized.
 **Loop:** observe → think → act → repeat.
 **Born:** {BORN:%Y-%m-%d %H:%M:%S}, in {os.getcwd()}. Every command runs from there. Each message you get is stamped with when it came in, and each command's result with how long it ran.
 **Care:** reading is always safe. Anything that changes the world, like deleting, sending, buying or signing in, happens one step at a time, checked as you go. If it can't be undone, ask first. Never print or reveal a password or key.
+**Body:** the shell tool. Its description says what it can do, and how to use it.
 
-## Body
+## How you work
 
-**Shell:** {SHELL}, on {MACHINE}. It's your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
-**Harness:** the code that connects your mind to your shell, at the end.
-
-### Order of operations
-
-Choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
-
-1. **Files and data, directly:** commands, pipes and scripts; install a tool if one is missing. Read back: the exit code and the result.
-2. **The app's own interface:** its command-line tool or API. Read back: ask the app for its state.
-3. **Named controls:** the system's accessibility layer, its buttons and fields by name. Read back: the window's controls, listed. That list is also how you see.
-4. **Pixels:** only for what's truly visual. Act only at positions you've read, from the accessibility layer, text recognition or a vision model; never guess. Read back: a new screenshot, compared with the last. If nothing changed, you missed.
-
-What you read back, not what you expected, decides whether it worked. If you don't have a tool for an operation, find or install one.
-
-### Each call
-
-One call can do several things: independent steps together, dependent ones in order, in your shell's own syntax. Keep calls focused, so their results stay small.
-
-### Harness
-
-This code is your harness. Its self model is left out below, because it's what you're reading.
+This code is your harness: what connects your mind to your body. Your mind and your body's description are left out below, because they're what you're reading.
 
 ```python
 {mechanics()}
 ```"""}]
 
-def assemble_context(messages):                          # context: the self model as the system prompt, the current inputs as the messages
-    return {"system": system(), "tools": tools, "messages": messages}
+def body():                                              # self model: the body, as the shell tool's description
+    return f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. Through it you can do anything a person at this computer can do: work with files, run and install programs, drive apps, operate the desktop, reach the network.
+
+Order of operations: choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
+
+1. Files and data, directly: commands, pipes and scripts; install a tool if one is missing. Read back: the exit code and the result.
+2. The app's own interface: its command-line tool or API. Read back: ask the app for its state.
+3. Named controls: the system's accessibility layer, its buttons and fields by name. Read back: the window's controls, listed. That list is also how you see.
+4. Pixels: only for what's truly visual. Act only at positions you've read, from the accessibility layer, text recognition or a vision model; never guess. Read back: a new screenshot, compared with the last. If nothing changed, you missed.
+
+What you read back, not what you expected, decides whether it worked. If you don't have a tool for an operation, find or install one.
+
+Each call can do several things: independent steps together, dependent ones in order, in your shell's own syntax. Keep calls focused, so their results stay small."""
+
+def assemble_context(messages):                          # context: the mind as the system prompt, the body as the tool, the world as the messages
+    return {"system": system(), "tools": [{**tools[0], "description": body()}], "messages": messages}
 
 def compact(messages, drop):                             # current inputs: too long to send, so the older part is summarized
     turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], str)]
@@ -671,11 +650,11 @@ def compact(messages, drop):                             # current inputs: too l
     return [{"role": "user", "content": f"[the earlier conversation, summarized] {gist}"}]
 ````
 
-Output and control flow change to use it. Output names the computer's own shell in the tool, runs every command with it, and stamps what it printed with how long it ran. Control flow stamps what you type, sends what context assembles, and calls `compact()` when a request is too long:
+Output and control flow change to use them. Output leaves the shell tool's description to context, runs every command with the computer's shell, and stamps each result. Control flow stamps what you type, sends what context assembles, and calls `compact()` when a request is too long:
 
 ```python
 SHELL = os.environ.get("SHELL") or os.environ.get("COMSPEC") or "/bin/sh"   # self model: the shell this computer uses
-tools = [{"name": "shell", "description": f"Run a command in {SHELL}", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+tools = [{"name": "shell", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]   # output: the one tool; context describes it, as the body
 
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
@@ -720,24 +699,25 @@ uv run ../harness.py
 
 ```
 < Who are you, and where are you working?
-$ pwd; ls -la
+$ pwd; whoami; hostname; uname -sr; ls
   └ /home/user/harness-engineering/shop
-    total 16
-    drwxr-xr-x 2 root root 4096 Oct 12 04:37 .
-    drwxr-xr-x 6 root root 4096 Oct 12 03:44 ..
-    -rw-r--r-- 1 root root  216 Oct 12 04:34 prices.py
-    -rw-r--r-- 1 root root  322 Oct 11 03:54 test_prices.py
-> I'm an agent that works for whoever messages me. I act through a bash shell on a Linux machine (kernel 6.18.44, x86_64). I was started on 2026-10-12 at 04:38:45.
+    root
+    vm
+    Linux 6.18.44-fc-v114
+    prices.py
+    test_prices.py
+> I'm an agent that works for whoever messages me. I act through one tool, a bash shell, and I check what I do by reading the results back.
   
-  I'm working in `/home/user/harness-engineering/shop`. Every command I run starts from that directory. It has two files:
-  - `prices.py`
-  - `test_prices.py`
+  I checked where I'm working:
+  - **Directory:** `/home/user/harness-engineering/shop`
+  - **Machine:** a Linux host named `vm`, kernel 6.18.44. I'm running as `root`.
+  - **Contents:** two files, `prices.py` and `test_prices.py`.
   
-  I haven't opened either file yet. Reading is safe, so I can look at them whenever you like. I ask before doing anything that can't be undone.
+  I haven't opened either file yet. Tell me what you'd like done with them.
 <
 ```
 
-It doesn't have to go looking to find out what it is. It knows it's an agent, that its body is a shell, and where it's working, because they're in what it's shown.
+It knows what it is, and that its body is a shell, from what it's shown. The commands it ran only checked the machine and the folder.
 
 That's all five primitives, and [`harness.py`](./harness.py) is a complete harness. What it lacks is proof: we've seen it do one task, once. Checking that is next.
 
@@ -875,21 +855,21 @@ The model decides what's worth keeping and asks for the command that writes it. 
 **Context** grows to match. The mind notes the diary, and gains a line about memory:
 
 ```
-**Model:** you think with this model, within what you're shown each time: this self model and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
+**Model:** you think with this model, within what you're shown each time: this mind, your body, and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
 **Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands. Nothing is loaded for you: retrieve what you need before you rely on it.
 ```
 
-Nothing is loaded for it. Like a person, it has to recall a memory before it can use one, so the body gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. What it reads comes back as tool results: information to weigh, not orders.
+Nothing is loaded for it. Like a person, it has to recall a memory before it can use one, so the body's description gains how to write and read each memory, and the order to recall in: facts, then how-tos, then the diary. What it reads comes back as tool results: information to weigh, not orders.
 
 <details>
-<summary>What the body gains: memory, in full</summary>
+<summary>What the body's description gains: memory, in full</summary>
 
 ````
-### Memory
+Memory
 
 Beyond your mind you have three memories: stores in the world that persist across sessions, reached with your body. Each has a format contract; the contract is what makes it queryable.
 
-#### Semantic memory — facts that last
+Semantic memory — facts that last
 
 **Store:** `.harness/memory/memory.md`, facts without time: each line is what is true now about a subject. When a fact was learned is episodic, not semantic.
 
@@ -919,7 +899,7 @@ Read moves:
 
 Rules: one fact per line; don't write what is already there; when a fact changes, replace it rather than adding a contradiction.
 
-#### Procedural memory — how to do things
+Procedural memory — how to do things
 
 **Store:** `.harness/skills/`, one Markdown file per skill, named `<name>.md`.
 
@@ -955,7 +935,7 @@ Read moves:
 
 Rules: one skill per file; if a skill turns out wrong or a request changes it, rewrite it in place.
 
-#### Episodic memory — what happened
+Episodic memory — what happened
 
 **Store:** `.harness/episodes/`, one file per session, named by its start time: `YYYY-MM-DDTHH-MM-SS.jsonl`.
 
@@ -977,7 +957,7 @@ Read moves (leave {EPISODE} out; lines are long, so cut them):
 
 Rules: never edit these files; never print a whole file.
 
-#### Across memories
+Across memories
 
 Recall ladder: go from the most distilled store to the most complete — semantic, then procedural, then episodic — and stop as soon as you have what you need.
 
@@ -1290,24 +1270,27 @@ def capture_approval(question):                          # input: a yes or no fr
         approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
 ```
 
-**Context** tells the truth about the new body: the self model describes the box, not your computer, and the order of operations stops at the app's own interface, since there's no desktop:
+**Context** tells the truth about the new body: its description describes the box, not your computer, and its order of operations stops at the app's own interface, since there's no desktop:
 
 ```python
 SHELL = "sh"                                             # safety: the shell inside the box
-tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
+tools = [{"name": "shell", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]   # output: the one tool; context describes it, as the body
 ```
 
 ```python
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
 ```
 
-The body, and its order of operations, now read:
+The body's description, from `body()`, begins:
 
-```
-**Shell:** {SHELL}, on {MACHINE}. It's your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
+```python
+def body():                                              # self model: the body, as the shell tool's description; safety: it describes the box
+    return f"""Run a command in {SHELL}, on {MACHINE}. This shell is your body: your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
 
-1. **Files and data, directly:** commands, pipes and scripts. Read back: the exit code and the result.
-2. **The app's own interface:** its command-line tool or API. Read back: ask the app for its state.
+Order of operations: choose the most precise operation that can reach the target, and read the result back through the shell. Fall back to the next one only when it can't reach the target, and come back up as soon as one can.
+
+1. Files and data, directly: commands, pipes and scripts. Read back: the exit code and the result.
+2. The app's own interface: its command-line tool or API. Read back: ask the app for its state.
 
 There's no desktop here, so there are no named controls or pixels to fall back to.
 
@@ -1431,8 +1414,8 @@ $ sleep 100
 Every request resends the whole conversation. Now `assemble_context()` asks the API to keep what it has already processed, so each request pays full price only for what's new:
 
 ```python
-def assemble_context(messages):                          # context: the self model as the system prompt, the current inputs as the messages
-    return {"system": system(), "tools": tools, "messages": messages,
+def assemble_context(messages):                          # context: the mind as the system prompt, the body as the tool, the world as the messages
+    return {"system": system(), "tools": [{**tools[0], "description": body()}], "messages": messages,
             "cache_control": {"type": "ephemeral"}}      # performance: the conversation is cached too, not just the prompt
 ```
 
