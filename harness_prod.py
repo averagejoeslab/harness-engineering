@@ -8,7 +8,7 @@ from anthropic import Anthropic, BadRequestError
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic(max_retries=3)                        # resilience: retry a request that fails
 MODEL = "claude-sonnet-5-5"
-def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
+def request_response(each=lambda event: None, **request):   # model interface: requests a response; performance: it streams back piece by piece to each()
     with client.messages.stream(model=MODEL, **request) as stream:
         for event in stream: each(event)
         return stream.get_final_message()
@@ -19,7 +19,7 @@ tools = [{"name": "shell", "description": "Run a command in sh, inside a contain
 
 thinking = {"type": "adaptive", "display": "summarized"}  # observability: ask for a summary of its thinking, to show
 
-def show(event):                                         # output: the model's words, after >, shown as they're written; observability: its thinking, in gray after ∴
+def show(event):                                         # output: the model's words, after >; observability: its thinking, in gray after ∴; performance: as they're written
     if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
     if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
     if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)

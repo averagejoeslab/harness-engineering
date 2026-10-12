@@ -6,10 +6,8 @@ from anthropic import Anthropic
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
-    with client.messages.stream(model=MODEL, **request) as stream:
-        for event in stream: each(event)
-        return stream.get_final_message()
+def request_response(**request):                         # model interface: requests a response from the model
+    return client.messages.create(model=MODEL, **request)
 
 # ── input ───────────────────────────────────────────────────────────────────
 def capture_input():                                     # input: captures what a person types

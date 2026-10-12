@@ -92,7 +92,7 @@ The agent will change the task's files as we go. `git checkout .` puts the bug b
 
 ### 1. Reach the model
 
-All we have is a model. The first primitive, the **model interface**, reaches it: `request_response()` sends a request and returns the model's response, streamed back a piece at a time so a long one never times out. Every later step talks to the model through it.
+All we have is a model. The first primitive, the **model interface**, reaches it: `request_response()` sends a request and returns the model's response. Every later step talks to the model through it.
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -113,10 +113,8 @@ In [`1_model_interface.py`](./1_model_interface.py):
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
-    with client.messages.stream(model=MODEL, **request) as stream:
-        for event in stream: each(event)
-        return stream.get_final_message()
+def request_response(**request):                         # model interface: requests a response from the model
+    return client.messages.create(model=MODEL, **request)
 
 output = request_response(max_tokens=16384, messages=[{"role": "user", "content": "The tests are failing. Find out why and fix it."}])
 print(output.model_dump_json(indent=2))
@@ -206,7 +204,7 @@ Now anyone can ask, but the model can still only reply in words: it asks us to s
 
 ### 3. Let it act
 
-Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words as they stream in, after `>`, and `nested()` puts what a command printed under it, after `└`:
+Next in the flow is **output**, which handles what the model sends back. We describe one tool, `shell`, so the model can ask to run a command. `handle_output()` runs each command it asks for. `show()` prints the model's words after `>`, and `nested()` puts what a command printed under it, after `└`:
 
 ```
 ┌──────────────────────────── harness ────────────────────────────┐
@@ -226,10 +224,8 @@ In [`3_output.py`](./3_output.py), `tools`, `show()`, `nested()` and `handle_out
 ```python
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after >, shown as they're written
-    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type == "text": print()
+def show(text):                                          # output: the model's words, after >
+    print("> " + text.replace("\n", "\n  "))
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -237,6 +233,7 @@ def nested(result):                                      # output: what a comman
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
     for block in output:
+        if block.type == "text": show(block.text)
         if block.type == "tool_use":
             print(f"$ {block.input['cmd']}")
             done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
@@ -245,7 +242,7 @@ def handle_output(output):                               # output: handles the m
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
     return results
 
-output = request_response(show, max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
+output = request_response(max_tokens=16384, tools=tools, messages=[{"role": "user", "content": input}]).content
 results = handle_output(output)                          # what the commands printed: nothing sends it back yet
 ```
 
@@ -293,7 +290,7 @@ def control_flow():                                      # control flow: defines
     input = " ".join(sys.argv[1:]) or capture_input()
     messages = [{"role": "user", "content": input}]
     while True:
-        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
+        output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
@@ -468,7 +465,7 @@ And `control_flow()` sends what it assembles, calling `compact()` when a request
     while True:
         try:
             if drop: messages, drop = compact(messages, drop), 0
-            output = request_response(show, max_tokens=16384, **assemble_context(messages)).content
+            output = request_response(max_tokens=16384, **assemble_context(messages)).content
         except BadRequestError as e:                     # too long to send: summarize on the next pass
             if "prompt is too long" not in str(e): raise
             drop += 1
@@ -967,19 +964,11 @@ tail -7 ~/.harness/record.jsonl
 
 A request's line shows the tokens in and out. A command's line shows what ran and how it ended (`exit` 0 means it worked).
 
-The record shows what it did, but not why. So **output** also shows a summary of the model's thinking, in gray after `∴`, when it thinks before it acts:
+The record shows what it did, but not why. So each request also asks for a summary of the model's thinking, and `show()` prints it in gray after `∴`:
 
 ```python
 thinking = {"type": "adaptive", "display": "summarized"}  # observability: ask for a summary of its thinking, to show
-
-def show(event):                                         # output: the model's words, after >, shown as they're written; observability: its thinking, in gray after ∴
-    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
-    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
 ```
-
-Every request asks for it:
 
 ```python
             response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
@@ -1034,6 +1023,23 @@ def assemble_context(messages):                          # context: assembles wh
 ```
 
 In the record, the first request paid to store about 6,900 tokens (`written`). Every request after it reused them (`cached`), and only a few hundred were new. Reused tokens cost about a tenth as much.
+
+A response also arrives all at once, after a pause as long as the model takes to write it. Now the **model interface** streams it back piece by piece, and `show()` prints each piece as it's written, so you see the first words right away. It also lets a long response run past the ten minutes a request may otherwise take:
+
+```python
+def request_response(each=lambda event: None, **request):   # model interface: requests a response; performance: it streams back piece by piece to each()
+    with client.messages.stream(model=MODEL, **request) as stream:
+        for event in stream: each(event)
+        return stream.get_final_message()
+```
+
+```python
+def show(event):                                         # output: the model's words, after >; observability: its thinking, in gray after ∴; performance: as they're written
+    if event.type == "content_block_start" and event.content_block.type == "thinking": print("\033[90m∴ ", end="")
+    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
+    if event.type in ("thinking", "text"): print(getattr(event, event.type).replace("\n", "\n  "), end="", flush=True)
+    if event.type == "content_block_stop" and event.content_block.type in ("thinking", "text"): print("\033[0m")
+```
 
 The model can also ask for several commands at once, when none needs another's result. **Output** ran them one after another. Now it asks about each, then runs the approved ones at the same time, and shows each result under its command:
 

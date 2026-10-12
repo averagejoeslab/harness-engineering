@@ -7,18 +7,14 @@ from anthropic import Anthropic
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic()
 MODEL = "claude-sonnet-5-5"
-def request_response(each=lambda event: None, **request):   # model interface: requests a response, which streams back piece by piece to each()
-    with client.messages.stream(model=MODEL, **request) as stream:
-        for event in stream: each(event)
-        return stream.get_final_message()
+def request_response(**request):                         # model interface: requests a response from the model
+    return client.messages.create(model=MODEL, **request)
 
 # ── output: the one tool ────────────────────────────────────────────────────
 tools = [{"name": "shell", "description": "Run a shell command", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 
-def show(event):                                         # output: the model's words, after >, shown as they're written
-    if event.type == "content_block_start" and event.content_block.type == "text": print("> ", end="")
-    if event.type == "text": print(event.text.replace("\n", "\n  "), end="", flush=True)
-    if event.type == "content_block_stop" and event.content_block.type == "text": print()
+def show(text):                                          # output: the model's words, after >
+    print("> " + text.replace("\n", "\n  "))
 
 def nested(result):                                      # output: what a command printed, nested under it with └
     return "  └ " + "\n    ".join(result.rstrip("\n").split("\n"))
@@ -26,6 +22,7 @@ def nested(result):                                      # output: what a comman
 def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
     results = []
     for block in output:
+        if block.type == "text": show(block.text)
         if block.type == "tool_use":
             print(f"$ {block.input['cmd']}")
             done = subprocess.run(block.input["cmd"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
@@ -46,7 +43,7 @@ def control_flow():                                      # control flow: defines
     input = " ".join(sys.argv[1:]) or capture_input()
     messages = [{"role": "user", "content": input}]
     while True:
-        output = request_response(show, max_tokens=16384, tools=tools, messages=messages).content
+        output = request_response(max_tokens=16384, tools=tools, messages=messages).content
         messages.append({"role": "assistant", "content": output})
         results = handle_output(output)
         if results:                                      # a command ran: send back what it printed, and go again
