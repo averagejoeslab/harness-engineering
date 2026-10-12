@@ -66,13 +66,11 @@ Every agent you've used, from a coding assistant to a chatbot that books flights
 
 ## Building a Harness
 
-Building a harness starts with what you want the agent to do. Research models for that work: what each knows, how it behaves, and based on that assume what it's likely to do well. Then shape the harness around the model you pick, because the best bodies are shaped by the mind inside them.
+Building a harness starts with what you want the agent to do. Pick a model for that work by researching what it knows and how it behaves, and so what it's likely to do well. Then shape the harness around it: the best bodies are shaped by the mind inside them.
 
-We'll use Claude Sonnet, called through Anthropic's Python SDK, in a format called Anthropic Messages. You can use the same, use another model provider that supports Anthropic Messages, or use a different format by changing the model interface. Claude has broad general knowledge and deep expertise in areas like coding and math, and it's good at following instructions through long, complex tasks. That fits the agent we'll build: one that works on a computer like a person, except it will do everything using the shell because I am making a wager that through the shell all things are possible.
+We'll use Claude Sonnet through Anthropic's Python SDK, in the Anthropic Messages format. You can do the same, use another provider that supports Anthropic Messages, or use a different format by changing the model interface. Claude has broad knowledge, deep expertise in areas like coding and math, and follows instructions well through long, complex tasks. That fits our agent: one that works on a computer like a person, but does everything through the shell, on my wager that through the shell all things are possible.
 
-We aren't building the model, only the body around it. We'll add one primitive at a time, and give every version the same job. Each step runs the job, shows how far the agent gets, and what stops it.
-
-**The job.** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` adds up a basket and should take off a percentage discount, and its test fails. Every version gets the same request:
+We aren't building the model, only its body: one primitive at a time, with every version given the same job, to see how far it gets and what stops it. **The job:** [`shop/`](./shop/) is a tiny project with a bug. `total()` in `prices.py` should take a percentage discount off a basket, and its test fails. The request is always:
 
 > The tests are failing. Find out why and fix it.
 
