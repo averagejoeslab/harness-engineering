@@ -762,9 +762,10 @@ def add(messages, message):                              # persistence: one mess
 
 The model decides what's worth keeping and asks for the command that writes it. Output runs it like any other.
 
-**Context** grows to match. The self model gains a line about memory:
+**Context** grows to match. The self model's mind notes the diary, and it gains a line about memory:
 
 ```
+**Mind:** this model. You think within what you're shown each time: this self model, your instructions, and this session's messages. When the messages grow too long, the older part is summarized; every message is still in your diary.
 **Memory:** three memories in `.harness/` outlast this session: a diary of every session, facts, and how-tos. The harness writes the diary; you write facts and how-tos with commands.
 ```
 
@@ -1030,6 +1031,7 @@ $ cd /tmp/shop; sed -i 's/subtotal - discount, 2/subtotal * (1 - discount \/ 100
 Every command runs on your machine, unasked. Now **output** runs them in a box: a container that sees only this folder, with no network:
 
 ```python
+BOX = f"harness-{os.getpid()}"
 def start_box():                                         # safety: a container that sees this folder and nothing else
     here = os.getcwd()
     subprocess.run(["docker", "run", "-d", "--rm", "--name", BOX, "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
@@ -1056,10 +1058,24 @@ def capture_approval(question):                          # input: a yes or no fr
 
 ```python
 SHELL = "sh"                                             # safety: the shell inside the box
+tools = [{"name": "shell", "description": "Run a command in sh, inside a container that sees only this folder", "input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}]
 ```
 
 ```python
 MACHINE = "Linux, in a container with no network and no desktop"   # safety: the self model describes the box, not your computer
+```
+
+The self model's body, and the order of operations, now read:
+
+```
+**Body:** the shell, {SHELL}, on {MACHINE}. It's your only way to observe and act. It sees only {os.getcwd()}: anything a person could do from a command line in that folder is within reach, with the programs already there. The person approves each command before it runs, and each is stopped after a minute.
+
+1. **Files and data, directly:** commands, pipes and scripts. Read back: the exit code and the result.
+2. **The app's own interface:** its command-line tool or API. Read back: ask the app for its state.
+
+There's no desktop here, so there are no named controls or pixels to fall back to.
+
+What you read back, not what you expected, decides whether it worked. There's no network, so nothing can be installed: use what's there.
 ```
 
 Ask it to delete the test. Say yes to its first command, and no to the next:
@@ -1191,8 +1207,21 @@ def show(event):                                         # output: the model's w
 The model can also ask for several commands at once, when none needs another's result. **Output** ran them one after another. Now it asks about each, then runs the approved ones at the same time, and shows each result under its command:
 
 ```python
+def handle_output(output):                               # output: handles the model's outputs, running each command it asks for
+    calls = [block for block in output if block.type == "tool_use"]
+    approved = []
+    for block in calls:
+        print(f"$ {block.input['cmd']}")
+        approved.append(capture_approval("  run this? [y/N] "))   # safety: nothing runs without a yes
     with ThreadPoolExecutor() as pool:                   # performance: the approved commands run at the same time
         done = list(pool.map(run, [block.input["cmd"] for block in calls], approved))
+    results = []
+    for block, (result, exit) in zip(calls, done):
+        record(cmd=block.input["cmd"], exit=exit)       # observability
+        if len(calls) > 1: print(f"$ {block.input['cmd']}")   # several ran at once: each result under its command again
+        print(nested(result))
+        results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})  # input: from the world
+    return results
 ```
 
 Ask for three commands that each take five seconds:
@@ -1227,6 +1256,35 @@ $ date +%s.%N; sleep 5; echo c; date +%s.%N
 ```
 
 The model decides which commands can run together. The harness just doesn't make them wait.
+
+Here is **control flow** with every answer in place, each line marked with its question:
+
+```python
+def control_flow():                                      # control flow: defines the shape of the loop
+    messages = resume()                                  # persistence: an unfinished session comes back first
+    message = "" if messages else capture_input()
+    start_box()                                          # safety: every command runs in the box
+    drop = 0
+    if message: add(messages, {"role": "user", "content": message})
+    while True:
+        try:
+            if drop: messages, drop = compact(messages, drop), 0
+            response = request_response(show, max_tokens=16384, thinking=thinking, **assemble_context(messages))
+            output = response.content
+            record(tokens_in=response.usage.input_tokens, written=response.usage.cache_creation_input_tokens,
+                   cached=response.usage.cache_read_input_tokens, tokens_out=response.usage.output_tokens)   # observability
+        except BadRequestError as e:                     # too long to send: summarize on the next pass
+            if "prompt is too long" not in str(e): raise
+            drop += 1
+            continue
+        add(messages, {"role": "assistant", "content": output})   # persistence: on disk before any command runs
+        results = handle_output(output)
+        if results:                                      # a command ran: send back what it printed, and go again
+            add(messages, {"role": "user", "content": results})
+            continue
+        if len(sys.argv) > 1: break                      # stop: a one-off request is done
+        add(messages, {"role": "user", "content": capture_input()})   # hand back: the person's next message
+```
 
 ### How do we know it still works?
 
