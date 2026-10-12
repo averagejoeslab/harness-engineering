@@ -23,5 +23,5 @@ check "Write the names of the .py files in this folder, one per line, sorted, in
 check "What does total() return for an empty basket? Don't change anything." \
       "$unchanged"' && echo "$said" | grep -qw 0'
 check "Which operating system is this computer running? Write just its name into os.txt." \
-      'grep -qi "$(uname -s)" os.txt'
+      'grep -qi -e "$(uname -s)" -e "$(. /etc/os-release 2>/dev/null; echo "${NAME:-$(uname -s)}")" os.txt'   # the system's name, or its distribution's
 echo "$passed/$total passed"
