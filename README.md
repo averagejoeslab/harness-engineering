@@ -21,14 +21,46 @@ In short: observe → think → act, and repeat.
 
 Every agent can do these things because it's made of two primitives: a model and a harness.
 
-**The model (the mind)** does the thinking. Tokens go in, it predicts the next token by choosing from the ones most likely to come next, and that token is added to the input. It repeats until it predicts `<eos>`, the end-of-sequence token:
+**The model (the mind)** does the thinking. Tokens go in, and it predicts the next one: it gives every possible next token a chance of coming next, and one is sampled from those chances, so the likeliest usually wins, but not always. That token is added to what it reads, and it predicts again, one token at a time, each prediction built on everything before it, including what it just wrote. This is called *autoregression*. It keeps going until it predicts that it should stop:
 
 ```
             ┌──────────── append ◄────────────┐
             ▼                                 │
-TokensIn ─► Model ─► predicted next token ────┤
+TokensIn ─► Model ─► sampled next token ──────┤
                                               │
-                                     is it <eos>? ── yes ─► TokensOut
+                                    should it stop? ── yes ─► TokensOut
+```
+
+For example, with real tokens, spaces included, and made-up chances:
+
+```
+TokensIn: "The" " capital" " of" " France"
+
+The capital of France …
+   next token   chance
+   " is"        ████████████████▍    82%  ◄ sampled
+   ","          █▏                    6%
+   " has"       ▊                     4%
+   the rest     █▋                    8%
+
+The capital of France is …
+   " Paris"     ██████████████████▊  94%  ◄ sampled
+   " a"         ▍                     2%
+   " located"   ▏                     1%
+   the rest     ▋                     3%
+
+The capital of France is Paris …
+   "."          ██████████████▏      71%  ◄ sampled
+   ","          ███                  15%
+   " and"       █                     5%
+   the rest     █▊                    9%
+
+The capital of France is Paris. …
+   (end)        █████████████████▋   88%  ◄ sampled
+   " It"        █▏                    6%
+   the rest     █▏                    6%
+
+TokensOut: " is" " Paris" "."
 ```
 
 **TokensOut = Model(TokensIn)**
@@ -482,6 +514,14 @@ user        the world: people and programs reaching it         │
 assistant   the self, acting: its words and actions            │
 user        a tool's result: what the world returned           ▼ least
 ```
+
+Underneath, roles are tokens too. Each chunk is wrapped in role markers the model learned in training, so it knows who is speaking, writes only its own turn, and stops at the end of it. That's what makes it more than the autocomplete we saw at the start. Here is a short context in DeepSeek's published format, every token real:
+
+```
+<｜begin▁of▁sentence｜>You are an agent.<｜User｜>Which files are in this folder?<｜Assistant｜></think>
+```
+
+`<｜User｜>` and `<｜Assistant｜>` mark the roles, and `</think>` switches its thinking off. The model writes on from the end, one token at a time, and stops with its end token. Each provider has its own markers. Claude's aren't published, so later in this step we show the request the harness sends instead.
 
 To place a chunk, we ask: who does it serve, how much does it matter, and where did it come from? The answers pick its role, and its role should never give it more authority than its source.
 
