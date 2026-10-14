@@ -16,7 +16,7 @@ An agent built on a language model is made of two primitives. The **model** is i
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/) to run the code, an [Anthropic API key](https://console.anthropic.com/). Clone this repo, move into the task's folder, and give it your key. Every command from here on runs in `shop/`:
+You need [uv](https://docs.astral.sh/uv/) to run the code and an [Anthropic API key](https://console.anthropic.com/). Clone this repo, move into the task's folder, and give it your key. Every command from here on runs in `shop/`:
 
 ```bash
 git clone https://github.com/averagejoeslab/harness-engineering
