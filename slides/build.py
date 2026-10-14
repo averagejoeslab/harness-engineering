@@ -12,15 +12,17 @@ def add(sid, body):                                      # remember each slide's
     LABELS[sid] = lib.FOOT["label"]; _add(sid, body)
 lib.add = add
 import s_intro, s_build, s_context, s_prod, s_prod2, s_extra, export
-from lib import SLIDES
+BEFORE_VIDEO = set(SLIDES := lib.SLIDES)
+import s_video
+VIDEO_ONLY = set(SLIDES) - BEFORE_VIDEO
 
 OUT = os.path.join(HERE, "decks")
 NOW = "2026-10-14T04:09:34Z"                          # when the decks were first created
 FACES = {"ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"},
          "jetbrains-mono": {"family": "JetBrains Mono", "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"}}
 
-EXTRA = ("lt-", "cf-", "ws-", "ep")
-MASTER = [s for s in SLIDES if not s.startswith(EXTRA)]
+EXTRA = ("lt-", "cf-", "ws-")
+MASTER = [s for s in SLIDES if not s.startswith(EXTRA) and s not in VIDEO_ONLY]
 
 NICE = {"opening": "Opening: the one idea, and what you'll leave with.",
         "what is an agent?": "What is an agent? A system that observes, thinks and acts, in a loop.",
@@ -112,19 +114,29 @@ for after, lab in (("s4-missing", "ws-lab1"), ("tasks-run", "ws-lab2"), ("securi
 ws_sections = sections_by_label(workshop, skip={"ws-lab1", "ws-lab2", "ws-lab3"})
 write("workshop", "Harness Engineering — Workshop", workshop, ws_sections)
 
-episodes = {"ep1": ["one-idea", "leave-with", "dark-room", "the-loop", "no-goal-needed", "you-are-an-agent"],
-            "ep2": ["agent-equals", "autoregressive", "probabilities", "model-cant", "five-primitives", "loop-diagram"],
-            "ep3": ["build-outward", "setup"] + [s for s in MASTER if re.match(r"s[1-4]-", s)],
-            "ep4": [s for s in MASTER if s.startswith("s5-")],
-            "ep5": ["one-run", "tasks", "tasks-run"],
-            "ep6": ["leave-alone", "six-questions", "persist-memories", "persist-retrieve", "persist-run"],
-            "ep7": [s for s in MASTER if s.startswith(("safety-", "security-"))],
-            "ep8": [s for s in MASTER if s.startswith(("obs-", "res-", "perf-"))] + ["eval-again"],
-            "ep9": ["built", "every-agent", "next-steps"]}
-video, video_sections = ["cover"], {}
-for (ep, n, title, sentence) in s_extra.EPISODES:
-    video_sections[f"s{n}"] = {"description": f"Episode {n}: {title}.", "start": "cover" if n == 1 else ep}
-    video += [ep] + episodes[ep]
+build = lambda n: [f"s{n}-what", f"s{n}-code", f"s{n}-run"]
+video = (["v-cover", "v1",
+          "v1a", "one-idea", "leave-with", "dark-room", "the-loop", "no-goal-needed", "you-are-an-agent",
+          "v1b", "agent-equals", "autoregressive", "probabilities", "model-cant", "five-primitives", "loop-diagram",
+          "v1c", "build-outward", "setup", "leave-alone", "six-questions",
+          "v2"] + build(1) + ["mi-production", "mi-retries", "mi-stream", "mi-record", "s1-missing",
+          "v3"] + build(2) + ["in-production", "in-approval", "in-results", "s2-missing",
+          "v4"] + build(3) + ["out-production", "safety-box", "safety-run", "out-secrets", "out-secret-run", "res-timeout", "perf-parallel", "s3-missing",
+          "v5"] + build(4) + ["cf-production", "cf-diary", "persist-run", "obs-record", "cf-compact", "cf-final", "s4-missing",
+          "v6", "s5-what", "s5-roles", "s5-tokens", "s5-placing", "s5-window", "s5-assembly", "s5-order", "s5-code", "s5-run",
+                 "ctx-production", "persist-memories", "ctx-memory", "ctx-trust", "ctx-injection-run", "ctx-cache", "obs-thinking", "s5-done",
+          "v7", "one-run", "tasks", "tasks-run", "security-threats", "security-eval", "eval-again",
+                 "built", "every-agent", "next-steps"])
+video_sections = {}
+def vs(start, text): video_sections[f"s{len(video_sections) + 1}"] = {"description": text, "start": start}
+vs("v-cover", "Video 1, introduction: what an agent is.")
+vs("v1b", "Video 1, introduction: agent primitives.")
+vs("v1c", "Video 1, introduction: the plan.")
+for v, name in (("v2", "model interface"), ("v3", "input"), ("v4", "output"), ("v5", "control flow"), ("v6", "context")):
+    n = v[1]
+    vs(v, f"Video {n}: building {name}.")
+    vs({"v2": "mi-production", "v3": "in-production", "v4": "out-production", "v5": "cf-production", "v6": "ctx-production"}[v], f"Video {n}: {name} in production.")
+vs("v7", "Video 7, conclusion: evaluating the harness.")
+vs("built", "Video 7, conclusion: what you built.")
 write("video", "Harness Engineering — Video Series", video, video_sections)
-missing = set(MASTER) - {s for e in episodes.values() for s in e} - {"cover"}
-print("master slides not in any episode:", sorted(missing))
+assert len(set(video)) == len(video), "a slide twice in the video deck"

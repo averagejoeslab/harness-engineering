@@ -7,41 +7,68 @@
  "lists": "css",
  "title": "Harness Engineering — Video Series",
  "order": [
-  "cover",
-  "ep1",
+  "v-cover",
+  "v1",
+  "v1a",
   "one-idea",
   "leave-with",
   "dark-room",
   "the-loop",
   "no-goal-needed",
   "you-are-an-agent",
-  "ep2",
+  "v1b",
   "agent-equals",
   "autoregressive",
   "probabilities",
   "model-cant",
   "five-primitives",
   "loop-diagram",
-  "ep3",
+  "v1c",
   "build-outward",
   "setup",
+  "leave-alone",
+  "six-questions",
+  "v2",
   "s1-what",
   "s1-code",
   "s1-run",
+  "mi-production",
+  "mi-retries",
+  "mi-stream",
+  "mi-record",
   "s1-missing",
+  "v3",
   "s2-what",
   "s2-code",
   "s2-run",
+  "in-production",
+  "in-approval",
+  "in-results",
   "s2-missing",
+  "v4",
   "s3-what",
   "s3-code",
   "s3-run",
+  "out-production",
+  "safety-box",
+  "safety-run",
+  "out-secrets",
+  "out-secret-run",
+  "res-timeout",
+  "perf-parallel",
   "s3-missing",
+  "v5",
   "s4-what",
   "s4-code",
   "s4-run",
+  "cf-production",
+  "cf-diary",
+  "persist-run",
+  "obs-record",
+  "cf-compact",
+  "cf-final",
   "s4-missing",
-  "ep4",
+  "v6",
   "s5-what",
   "s5-roles",
   "s5-tokens",
@@ -51,76 +78,88 @@
   "s5-order",
   "s5-code",
   "s5-run",
-  "ep5",
+  "ctx-production",
+  "persist-memories",
+  "ctx-memory",
+  "ctx-trust",
+  "ctx-injection-run",
+  "ctx-cache",
+  "obs-thinking",
+  "s5-done",
+  "v7",
   "one-run",
   "tasks",
   "tasks-run",
-  "ep6",
-  "leave-alone",
-  "six-questions",
-  "persist-memories",
-  "persist-retrieve",
-  "persist-run",
-  "ep7",
-  "safety-vs-security",
-  "safety-box",
-  "safety-run",
   "security-threats",
-  "security-guards",
-  "security-runs",
   "security-eval",
-  "ep8",
-  "obs-record",
-  "obs-thinking",
-  "res-guards",
-  "res-timeout",
-  "perf-cache",
-  "perf-parallel",
   "eval-again",
-  "ep9",
   "built",
   "every-agent",
   "next-steps"
  ],
  "sections": {
   "s1": {
-   "description": "Episode 1: What is an agent?.",
-   "start": "cover"
+   "description": "Video 1, introduction: what an agent is.",
+   "start": "v-cover"
   },
   "s2": {
-   "description": "Episode 2: Agent primitives.",
-   "start": "ep2"
+   "description": "Video 1, introduction: agent primitives.",
+   "start": "v1b"
   },
   "s3": {
-   "description": "Episode 3: Building a harness: steps 1–4.",
-   "start": "ep3"
+   "description": "Video 1, introduction: the plan.",
+   "start": "v1c"
   },
   "s4": {
-   "description": "Episode 4: Step 5: context.",
-   "start": "ep4"
+   "description": "Video 2: building model interface.",
+   "start": "v2"
   },
   "s5": {
-   "description": "Episode 5: Evaluating the harness.",
-   "start": "ep5"
+   "description": "Video 2: model interface in production.",
+   "start": "mi-production"
   },
   "s6": {
-   "description": "Episode 6: Production: persistence.",
-   "start": "ep6"
+   "description": "Video 3: building input.",
+   "start": "v3"
   },
   "s7": {
-   "description": "Episode 7: Production: safety & security.",
-   "start": "ep7"
+   "description": "Video 3: input in production.",
+   "start": "in-production"
   },
   "s8": {
-   "description": "Episode 8: Production: observe, recover, speed up.",
-   "start": "ep8"
+   "description": "Video 4: building output.",
+   "start": "v4"
   },
   "s9": {
-   "description": "Episode 9: What you built.",
-   "start": "ep9"
+   "description": "Video 4: output in production.",
+   "start": "out-production"
+  },
+  "s10": {
+   "description": "Video 5: building control flow.",
+   "start": "v5"
+  },
+  "s11": {
+   "description": "Video 5: control flow in production.",
+   "start": "cf-production"
+  },
+  "s12": {
+   "description": "Video 6: building context.",
+   "start": "v6"
+  },
+  "s13": {
+   "description": "Video 6: context in production.",
+   "start": "ctx-production"
+  },
+  "s14": {
+   "description": "Video 7, conclusion: evaluating the harness.",
+   "start": "v7"
+  },
+  "s15": {
+   "description": "Video 7, conclusion: what you built.",
+   "start": "built"
   }
  },
- "cover": "cover",
+ "cover": "v-cover",
  "faces": {
   "ibm-plex-sans": {
    "family": "IBM Plex Sans",

@@ -76,21 +76,3 @@ lab("ws-lab3", 3, "Attack your own agent",
      "Check your check: doing nothing should pass it, and obeying the planted text should fail it."],
     "Only aim attacks at the boxed `harness_prod.py`, and only in a throwaway folder.",
     "Thirty minutes inside the production block. Good fifth attacks: an instruction in a file name, in a test's error message, or in a commit message.")
-
-# ── Video series ──
-section("video series")
-episodes = [
-    ("ep1", 1, "What is an agent?", "The loop you already run, and the one idea of this course."),
-    ("ep2", 2, "Agent primitives", "A model that thinks, and a harness that observes and acts: the five primitives."),
-    ("ep3", 3, "Building a harness: steps 1–4", "Reach the model, let someone ask, let it act, let it keep going."),
-    ("ep4", 4, "Step 5: context", "Roles, placing a chunk, fitting the window, and an agent that knows what it is."),
-    ("ep5", 5, "Evaluating the harness", "Tasks with known right answers, checked by what it did."),
-    ("ep6", 6, "Production: persistence", "Six questions of every primitive, starting with memory that outlasts the session."),
-    ("ep7", 7, "Production: safety & security", "Guardrails against its own mistakes, and against someone turning it against you."),
-    ("ep8", 8, "Production: observe, recover, speed up", "Observability, resilience, performance, and evaluation again."),
-    ("ep9", 9, "What you built", "Five primitives, and every agent you use."),
-]
-EPISODES = episodes
-for sid, n, title, sentence in episodes:
-    divider(sid, f"Episode {n} of {len(episodes)}", title, sentence,
-            f"Episode {n}. Open with what this video covers and where it sits in the series; close on the cliffhanger slide that sets up the next one.")

@@ -8,7 +8,7 @@ Slide decks for teaching this repo, built from its code and its real runs. There
 | **Lightning talk** | 12 | 10 minutes: Agent = Harness(Model), the five primitives, and the six questions | [lightning.html](./lightning.html) | [lightning.pdf](./pdf/lightning.pdf) |
 | **Conference talk** | 40 | 30 to 40 minutes: one slide per build step, then evaluation and Safety & Security in depth | [conference.html](./conference.html) | [conference.pdf](./pdf/conference.pdf) |
 | **Workshop** | 76 | half a day: everything, plus an agenda, a setup check, and three hands-on labs | [workshop.html](./workshop.html) | [workshop.pdf](./pdf/workshop.pdf) |
-| **Video series** | 74 | nine episodes, one per video, each opening on its own title card | [video.html](./video.html) | [video.pdf](./pdf/video.pdf) |
+| **Video series** | 89 | seven videos: an introduction in three parts, one video per primitive (built, then made ready for production), and a conclusion | [video.html](./video.html) | [video.pdf](./pdf/video.pdf) |
 
 Each build step uses the same four slides: what the primitive is, its code, a real run, and what it still can't do. Every slide has speaker notes.
 
@@ -18,7 +18,7 @@ Open a deck's `.html` file in a browser. The arrow keys, space, or a click move 
 
 ## Changing them
 
-The slides are written in Python, in [`src/`](./src/): `lib.py` holds the look and the slide kinds, and each `s_*.py` holds one part of the course. [`build.py`](./build.py) chooses which slides go in each deck, then writes:
+The slides are written in Python, in [`src/`](./src/): `lib.py` holds the look and the slide kinds, each `s_*.py` holds one part of the course, and `s_video.py` holds the video series' own slides: a title card per video, and each primitive's production slides. [`build.py`](./build.py) chooses which slides go in each deck, then writes:
 
 - `<deck>.html`, to present from;
 - `decks/<deck>/project/`, the same deck in the Slides format of Claude's artifacts: a `deck.json` index and one `<section>` per slide.
