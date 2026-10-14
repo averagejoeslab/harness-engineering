@@ -1,0 +1,93 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-14T04:09:34Z"
+ },
+ "lists": "css",
+ "title": "Harness Engineering — Conference Talk",
+ "order": [
+  "cf-cover",
+  "one-idea",
+  "leave-with",
+  "d-agent",
+  "dark-room",
+  "the-loop",
+  "no-goal-needed",
+  "you-are-an-agent",
+  "d-primitives",
+  "agent-equals",
+  "autoregressive",
+  "probabilities",
+  "model-cant",
+  "five-primitives",
+  "loop-diagram",
+  "d-build",
+  "build-outward",
+  "s1-missing",
+  "s2-missing",
+  "s3-missing",
+  "s4-run",
+  "s4-missing",
+  "s5-what",
+  "s5-assembly",
+  "s5-run",
+  "d-eval",
+  "one-run",
+  "tasks",
+  "d-prod",
+  "six-questions",
+  "safety-vs-security",
+  "safety-box",
+  "security-threats",
+  "security-guards",
+  "security-runs",
+  "security-eval",
+  "d-close",
+  "built",
+  "every-agent",
+  "next-steps"
+ ],
+ "sections": {
+  "s1": {
+   "description": "Opening: the one idea, and what you'll leave with.",
+   "start": "cf-cover"
+  },
+  "s2": {
+   "description": "What is an agent? A system that observes, thinks and acts, in a loop.",
+   "start": "d-agent"
+  },
+  "s3": {
+   "description": "Agent primitives: a model that thinks, a harness that observes and acts.",
+   "start": "d-primitives"
+  },
+  "s4": {
+   "description": "Building a harness: one slide per step, then the agent that knows what it is.",
+   "start": "d-build"
+  },
+  "s5": {
+   "description": "Evaluating the harness on tasks with known right answers.",
+   "start": "d-eval"
+  },
+  "s6": {
+   "description": "Production, through its sharpest question: safety & security.",
+   "start": "d-prod"
+  },
+  "s7": {
+   "description": "What you built, and every agent is these five.",
+   "start": "d-close"
+  }
+ },
+ "cover": "cf-cover",
+ "faces": {
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
+  },
+  "jetbrains-mono": {
+   "family": "JetBrains Mono",
+   "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"
+  }
+ },
+ "designSystems": []
+}

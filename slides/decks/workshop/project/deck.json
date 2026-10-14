@@ -1,0 +1,177 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-14T04:09:34Z"
+ },
+ "lists": "css",
+ "title": "Harness Engineering — Workshop",
+ "order": [
+  "ws-cover",
+  "ws-agenda",
+  "ws-setup",
+  "one-idea",
+  "leave-with",
+  "d-agent",
+  "dark-room",
+  "the-loop",
+  "no-goal-needed",
+  "you-are-an-agent",
+  "d-primitives",
+  "agent-equals",
+  "autoregressive",
+  "probabilities",
+  "model-cant",
+  "five-primitives",
+  "loop-diagram",
+  "d-build",
+  "build-outward",
+  "setup",
+  "s1-what",
+  "s1-code",
+  "s1-run",
+  "s1-missing",
+  "s2-what",
+  "s2-code",
+  "s2-run",
+  "s2-missing",
+  "s3-what",
+  "s3-code",
+  "s3-run",
+  "s3-missing",
+  "s4-what",
+  "s4-code",
+  "s4-run",
+  "s4-missing",
+  "ws-lab1",
+  "s5-what",
+  "s5-roles",
+  "s5-tokens",
+  "s5-placing",
+  "s5-window",
+  "s5-assembly",
+  "s5-order",
+  "s5-code",
+  "s5-run",
+  "d-eval",
+  "one-run",
+  "tasks",
+  "tasks-run",
+  "ws-lab2",
+  "d-prod",
+  "leave-alone",
+  "six-questions",
+  "persist-memories",
+  "persist-retrieve",
+  "persist-run",
+  "safety-vs-security",
+  "safety-box",
+  "safety-run",
+  "security-threats",
+  "security-guards",
+  "security-runs",
+  "security-eval",
+  "ws-lab3",
+  "obs-record",
+  "obs-thinking",
+  "res-guards",
+  "res-timeout",
+  "perf-cache",
+  "perf-parallel",
+  "eval-again",
+  "d-close",
+  "built",
+  "every-agent",
+  "next-steps"
+ ],
+ "sections": {
+  "s1": {
+   "description": "Welcome, the plan for today, and a setup check.",
+   "start": "ws-cover"
+  },
+  "s2": {
+   "description": "Opening: the one idea, and what you'll leave with.",
+   "start": "one-idea"
+  },
+  "s3": {
+   "description": "What is an agent? A system that observes, thinks and acts, in a loop.",
+   "start": "d-agent"
+  },
+  "s4": {
+   "description": "Agent primitives: a model that thinks, a harness that observes and acts.",
+   "start": "d-primitives"
+  },
+  "s5": {
+   "description": "Building a harness outward from the model, on one small task.",
+   "start": "d-build"
+  },
+  "s6": {
+   "description": "Step 1: the model interface reaches the model.",
+   "start": "s1-what"
+  },
+  "s7": {
+   "description": "Step 2: input lets someone ask.",
+   "start": "s2-what"
+  },
+  "s8": {
+   "description": "Step 3: output lets it act through one shell.",
+   "start": "s3-what"
+  },
+  "s9": {
+   "description": "Step 4: control flow lets it keep going; now it's an agent.",
+   "start": "s4-what"
+  },
+  "s10": {
+   "description": "Step 5: context tells it what it is and how to use its body.",
+   "start": "s5-what"
+  },
+  "s11": {
+   "description": "Evaluating the harness on tasks with known right answers.",
+   "start": "d-eval"
+  },
+  "s12": {
+   "description": "Getting it ready for production: six questions of every primitive.",
+   "start": "d-prod"
+  },
+  "s13": {
+   "description": "Persistence: what should outlast the session?",
+   "start": "persist-memories"
+  },
+  "s14": {
+   "description": "Safety & Security: what could do harm, and who could make it?",
+   "start": "safety-vs-security"
+  },
+  "s15": {
+   "description": "Observability: what did it actually do?",
+   "start": "obs-record"
+  },
+  "s16": {
+   "description": "Resilience: what if something breaks?",
+   "start": "res-guards"
+  },
+  "s17": {
+   "description": "Performance: why is it slow or costly?",
+   "start": "perf-cache"
+  },
+  "s18": {
+   "description": "Evaluation: how do we know it still works?",
+   "start": "eval-again"
+  },
+  "s19": {
+   "description": "What you built, and every agent is these five.",
+   "start": "d-close"
+  }
+ },
+ "cover": "ws-cover",
+ "faces": {
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
+  },
+  "jetbrains-mono": {
+   "family": "JetBrains Mono",
+   "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"
+  }
+ },
+ "designSystems": []
+}

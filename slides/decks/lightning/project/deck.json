@@ -1,0 +1,41 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-14T04:09:34Z"
+ },
+ "lists": "css",
+ "title": "Harness Engineering — Lightning Talk",
+ "order": [
+  "lt-cover",
+  "one-idea",
+  "the-loop",
+  "agent-equals",
+  "five-primitives",
+  "loop-diagram",
+  "s4-run",
+  "six-questions",
+  "safety-vs-security",
+  "built",
+  "every-agent",
+  "next-steps"
+ ],
+ "sections": {
+  "s1": {
+   "description": "Lightning talk: Agent = Harness(Model) in ten minutes.",
+   "start": "lt-cover"
+  }
+ },
+ "cover": "lt-cover",
+ "faces": {
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
+  },
+  "jetbrains-mono": {
+   "family": "JetBrains Mono",
+   "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"
+  }
+ },
+ "designSystems": []
+}

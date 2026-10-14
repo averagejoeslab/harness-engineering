@@ -6,6 +6,8 @@ By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.c
 
 Harness engineering is the practice of building the body of an agent. To do it, you first need to know what an agent is and what it's made of. Then we'll build a harness piece by piece using a simple task as guidance, evaluate that harness against a set of tasks, and get it ready for production.
 
+Teaching it? [`slides/`](./slides/) has a master deck and decks cut from it for a lightning talk, a conference talk, a workshop and a video series.
+
 ## What is an Agent?
 
 An agent is a system that loops over three steps: it observes its inputs, thinks about them, and acts. Nobody has to give it a goal. It can set its own from what it observes, change it as it learns, or simply keep watching.
@@ -1740,3 +1742,9 @@ You started with a model that could only predict the next token, and built a bod
 Then you evaluated it on a set of tasks, and got it ready for production by asking six questions of every primitive.
 
 That's harness engineering. Every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built with more care. Open any of them and you'll find the same five.
+
+## License
+
+The code (the Python files, `shop/`, and the code that builds the slides) is under the [MIT License](./LICENSE). The written course (this README and the slides in [`slides/`](./slides/)) is under [Creative Commons Attribution 4.0](./LICENSE-CC-BY-4.0) (CC BY 4.0): you can share and adapt it, for any purpose, as long as you credit Chase Dovey and link back to this repo.
+
+Copyright © 2026 Chase Dovey.

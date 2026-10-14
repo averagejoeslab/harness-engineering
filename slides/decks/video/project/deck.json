@@ -1,0 +1,135 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-14T04:09:34Z"
+ },
+ "lists": "css",
+ "title": "Harness Engineering — Video Series",
+ "order": [
+  "cover",
+  "ep1",
+  "one-idea",
+  "leave-with",
+  "dark-room",
+  "the-loop",
+  "no-goal-needed",
+  "you-are-an-agent",
+  "ep2",
+  "agent-equals",
+  "autoregressive",
+  "probabilities",
+  "model-cant",
+  "five-primitives",
+  "loop-diagram",
+  "ep3",
+  "build-outward",
+  "setup",
+  "s1-what",
+  "s1-code",
+  "s1-run",
+  "s1-missing",
+  "s2-what",
+  "s2-code",
+  "s2-run",
+  "s2-missing",
+  "s3-what",
+  "s3-code",
+  "s3-run",
+  "s3-missing",
+  "s4-what",
+  "s4-code",
+  "s4-run",
+  "s4-missing",
+  "ep4",
+  "s5-what",
+  "s5-roles",
+  "s5-tokens",
+  "s5-placing",
+  "s5-window",
+  "s5-assembly",
+  "s5-order",
+  "s5-code",
+  "s5-run",
+  "ep5",
+  "one-run",
+  "tasks",
+  "tasks-run",
+  "ep6",
+  "leave-alone",
+  "six-questions",
+  "persist-memories",
+  "persist-retrieve",
+  "persist-run",
+  "ep7",
+  "safety-vs-security",
+  "safety-box",
+  "safety-run",
+  "security-threats",
+  "security-guards",
+  "security-runs",
+  "security-eval",
+  "ep8",
+  "obs-record",
+  "obs-thinking",
+  "res-guards",
+  "res-timeout",
+  "perf-cache",
+  "perf-parallel",
+  "eval-again",
+  "ep9",
+  "built",
+  "every-agent",
+  "next-steps"
+ ],
+ "sections": {
+  "s1": {
+   "description": "Episode 1: What is an agent?.",
+   "start": "cover"
+  },
+  "s2": {
+   "description": "Episode 2: Agent primitives.",
+   "start": "ep2"
+  },
+  "s3": {
+   "description": "Episode 3: Building a harness: steps 1–4.",
+   "start": "ep3"
+  },
+  "s4": {
+   "description": "Episode 4: Step 5: context.",
+   "start": "ep4"
+  },
+  "s5": {
+   "description": "Episode 5: Evaluating the harness.",
+   "start": "ep5"
+  },
+  "s6": {
+   "description": "Episode 6: Production: persistence.",
+   "start": "ep6"
+  },
+  "s7": {
+   "description": "Episode 7: Production: safety & security.",
+   "start": "ep7"
+  },
+  "s8": {
+   "description": "Episode 8: Production: observe, recover, speed up.",
+   "start": "ep8"
+  },
+  "s9": {
+   "description": "Episode 9: What you built.",
+   "start": "ep9"
+  }
+ },
+ "cover": "cover",
+ "faces": {
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
+  },
+  "jetbrains-mono": {
+   "family": "JetBrains Mono",
+   "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"
+  }
+ },
+ "designSystems": []
+}
