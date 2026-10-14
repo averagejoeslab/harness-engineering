@@ -2,7 +2,7 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-An **agent** is anything that loops over three steps: it observes, thinks, and acts, then does it again.
+An **agent** is anything that loops over three steps: observe, think, and act.
 
 An agent built on a language model is made of two primitives. The **model** is its mind, and it only thinks: tokens go in, and it predicts the next one, over and over, until it predicts it should stop. On its own it can't see anything, and it can't do anything with what it writes. The **harness** is its body, and does everything else, through five primitives of its own, each serving part of the loop:
 
