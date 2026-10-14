@@ -2,19 +2,19 @@
 
 By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.com/averagejoeslab)
 
-An agent loops: it **observes**, **thinks**, and **acts**, then does it again. It has two parts. The **model** is its mind: tokens go in, and it predicts what comes next. The **harness** is its body: it gets the model its input, carries out what the model says, and keeps the loop going.
+An **agent** is anything that loops over three steps: it observes, thinks, and acts, then does it again.
 
-**Harness engineering** is the practice of building that body around the model. On its own, a model only predicts the next token. Inside a harness, it becomes something that can observe its environment and act on it. A harness has five primitives:
+An agent built on a language model has two parts. The **model** is its mind, and it only thinks: tokens go in, and it predicts the next one, over and over, until it predicts it should stop. On its own it can't see anything, and it can't do anything with what it writes.
 
-| Primitive | What it does |
-|---|---|
-| **Model interface** | sends a request to the model and returns its response |
-| **Input** | captures what comes in |
-| **Output** | handles what the model sends back |
-| **Control flow** | defines the shape of the loop |
-| **Context** | assembles what the model is shown |
+The **harness** is its body, and does everything else. **Harness engineering** is the practice of building it: turning a model that only predicts the next token into an agent that observes its environment and acts on it. A harness does that with five primitives, each serving part of the loop:
 
-We'll build them one at a time, on one task: [`shop/`](./shop/) has a bug, and the request is *"The tests are failing. Find out why and fix it."*
+- **Input** observes: it captures what comes in, from a person or from the world.
+- **Context** assembles what the model is shown each time: who it is, what it can do, and what it has observed so far.
+- **Model interface** sends that to the model, and brings back what it thinks.
+- **Output** acts: it carries out what the model decided, like running a command.
+- **Control flow** repeats: it sends what happened back around, and decides whether to go again, hand back, or stop.
+
+We'll build them one at a time, outward from the model, around one task: [`shop/`](./shop/) has a bug, and the request is *"The tests are failing. Find out why and fix it."*
 
 You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/):
 
