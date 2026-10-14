@@ -16,12 +16,12 @@ An agent built on a language model is made of two primitives. The **model** is i
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/) to run the code and an [Anthropic API key](https://console.anthropic.com/). Clone this repo, move into the task's folder, and give it your key. Every command from here on runs in `shop/`:
+You need [uv](https://docs.astral.sh/uv/) to run the code and a [DeepSeek API key](https://platform.deepseek.com/api_keys). We'll use DeepSeek's `deepseek-flash` model through its support for the Anthropic Messages format, so the code uses Anthropic's Python SDK. Clone this repo, move into the task's folder, and give it your key. Every command from here on runs in `shop/`:
 
 ```bash
 git clone https://github.com/averagejoeslab/harness-engineering
 cd harness-engineering/shop
-export ANTHROPIC_API_KEY=your-key
+export DEEPSEEK_API_KEY=your-key
 ```
 
 The agent will change the task's files as we go. `git checkout .` puts the bug back.
@@ -47,8 +47,8 @@ In [`1_model_interface.py`](./1_model_interface.py):
 
 ```python
 # ── model interface ─────────────────────────────────────────────────────────
-client = Anthropic()
-MODEL = "claude-sonnet-5-5"
+client = Anthropic(base_url="https://api.deepseek.com/anthropic", api_key=os.environ["DEEPSEEK_API_KEY"])   # DeepSeek, in the Anthropic Messages format
+MODEL = "deepseek-flash"
 def request_response(**request):                         # model interface: requests a response from the model
     return client.messages.create(model=MODEL, **request)
 
@@ -409,7 +409,7 @@ The last primitive, **context**, fixes that.
 
 Next is **context**: what the model is shown on each call. It's best understood from the agent's perspective. Context is its working memory, everything it has in mind at this moment. Whatever isn't in its context, the agent doesn't have in mind, so what we put there, and how, shapes everything it does.
 
-Once we know which chunks we want in context, how we organize them is decided by the roles available and their hierarchy of authority. Every chunk has to sit in a role, and the model learned in training how much authority each role carries. For Claude, the roles look like this:
+Once we know which chunks we want in context, how we organize them is decided by the roles available and their hierarchy of authority. Every chunk has to sit in a role, and the model learned in training how much authority each role carries. For DeepSeek, the roles look like this:
 
 ```
 system      the mind: who it is, its drives, how it operates   ▲ most authority
@@ -425,7 +425,7 @@ Underneath, roles are tokens too. Each chunk is wrapped in role markers the mode
 <｜begin▁of▁sentence｜>You are an agent.<｜User｜>Which files are in this folder?<｜Assistant｜></think>
 ```
 
-`<｜User｜>` and `<｜Assistant｜>` mark the roles, and `</think>` switches its thinking off. The model writes on from the end, one token at a time, and stops with its end token. Each provider has its own markers. Claude's aren't published, so later in this step we show the request the harness sends instead.
+`<｜User｜>` and `<｜Assistant｜>` mark the roles, and `</think>` switches its thinking off. The model writes on from the end, one token at a time, and stops with its end token. These are the markers `deepseek-flash` reads. The harness doesn't write them itself: it sends a request in the Anthropic Messages format, and DeepSeek turns it into tokens like these. Later in this step we show that request.
 
 To place a chunk, we ask: who does it serve, how much does it matter, and where did it come from? The answers pick its role, and its role should never give it more authority than its source.
 
@@ -467,7 +467,7 @@ The tool's description centers on an order of operations: use the most precise o
 | 3 | Use named controls: the system's accessibility layer, its buttons and fields by name | list the window's controls |
 | 4 | Use pixels, only for what's truly visual | compare a new screenshot with the last |
 
-Here's what Claude is sent on the task's second request, after its first command came back. The mind and the body are cut after their first lines:
+Here's what DeepSeek is sent on the task's second request, after its first command came back. The mind and the body are cut after their first lines:
 
 ```json
 {

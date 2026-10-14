@@ -1,12 +1,12 @@
 # /// script
 # dependencies = ["anthropic"]
 # ///
-import sys
+import os, sys
 from anthropic import Anthropic
 
 # ── model interface ─────────────────────────────────────────────────────────
-client = Anthropic()
-MODEL = "claude-sonnet-5-5"
+client = Anthropic(base_url="https://api.deepseek.com/anthropic", api_key=os.environ["DEEPSEEK_API_KEY"])   # DeepSeek, in the Anthropic Messages format
+MODEL = "deepseek-flash"
 def request_response(**request):                         # model interface: requests a response from the model
     return client.messages.create(model=MODEL, **request)
 
