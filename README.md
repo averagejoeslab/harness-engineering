@@ -8,18 +8,45 @@ Harness engineering is the practice of building the body of an agent. To do it, 
 
 ## What is an Agent?
 
-An agent is a system that can:
+An agent is a system that loops over three steps: it observes its inputs, thinks about them, and acts. Nobody has to give it a goal. It can set its own from what it observes, change it as it learns, or simply keep watching.
 
-- observe what's around it
-- think about what it observed and decide what to do
-- act on what it decided
-- repeat until its goal is met
+You run this loop yourself. Imagine you're suddenly somewhere completely dark.
+
+**Observe:** you can't see a thing. There's a floor under your feet, and silence.  
+**Think:** where am I? A room, a cave, a field? That becomes your goal: find out.  
+**Act:** you reach out to learn more.
+
+**Observe:** your hand meets something flat and cool.  
+**Think:** a wall, so probably a room. Rooms have light switches. New goal: find one.  
+**Act:** you slide your hand along the wall.
+
+**Observe:** smooth, smooth, then a small edge.  
+**Think:** that's a switch.  
+**Act:** you flip it.
+
+**Observe:** light. Now you can see where you are, and the loop **repeats** with whatever you notice next.
+
+Every turn started from what the last one taught you:
+
+```
+                        think
+              "where am I? a wall means
+                 a room: find a switch"
+           ┌──────────────────────────────────┐
+           │                                  ▼
+        observe                              act
+  the dark, a floor, a wall          reach out, feel along it
+           ▲                                  │
+           └──────── you know a little more ◄─┘
+
+                         repeat
+```
 
 In short: observe → think → act, and repeat.
 
 ### Agent Primitives
 
-Every agent can do these things because it's made of two primitives: a model and a harness.
+In the dark, your mind did the thinking, and your body did the observing and acting: your hand felt the wall and flipped the switch. The agents we build have the same two parts, called primitives: a **model**, its mind, and a **harness**, its body. Together they run the same loop, one turn at a time.
 
 **The model (the mind)** does the thinking. Tokens go in, and it predicts the next one: it gives every possible next token a chance of coming next, and one is sampled from those chances, so the likeliest usually wins, but not always. That token is added to what it reads, and it predicts again, one token at a time, each prediction built on everything before it, including what it just wrote. This is called *autoregression*. It keeps going until it predicts that it should stop:
 
