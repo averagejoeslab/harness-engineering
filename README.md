@@ -4,9 +4,7 @@ By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.c
 
 An **agent** is anything that loops over three steps: it observes, thinks, and acts, then does it again.
 
-An agent built on a language model has two parts. The **model** is its mind, and it only thinks: tokens go in, and it predicts the next one, over and over, until it predicts it should stop. On its own it can't see anything, and it can't do anything with what it writes.
-
-The **harness** is its body, and does everything else. **Harness engineering** is the practice of building it: turning a model that only predicts the next token into an agent that observes its environment and acts on it. A harness does that with five primitives, each serving part of the loop:
+An agent built on a language model is made of two primitives. The **model** is its mind, and it only thinks: tokens go in, and it predicts the next one, over and over, until it predicts it should stop. On its own it can't see anything, and it can't do anything with what it writes. The **harness** is its body, and does everything else, through five primitives of its own, each serving part of the loop:
 
 - **Input** observes: it captures what comes in, from a person or from the world.
 - **Context** assembles what the model is shown each time: who it is, what it can do, and what it has observed so far.
@@ -14,7 +12,7 @@ The **harness** is its body, and does everything else. **Harness engineering** i
 - **Output** acts: it carries out what the model decided, like running a command.
 - **Control flow** repeats: it sends what happened back around, and decides whether to go again, hand back, or stop.
 
-We'll build them one at a time, outward from the model, around one task: [`shop/`](./shop/) has a bug, and the request is *"The tests are failing. Find out why and fix it."*
+**Harness engineering** is building that body. Here we'll build a harness around a model, one primitive at a time, outward from the model, until together they make an agent. To prove each step out, the agent needs something to do: [`shop/`](./shop/) is a tiny project whose tests fail, and the request is always *"The tests are failing. Find out why and fix it."*
 
 You need [uv](https://docs.astral.sh/uv/) and an [Anthropic API key](https://console.anthropic.com/):
 
