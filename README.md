@@ -63,31 +63,34 @@ For example, with real tokens, spaces included, and made-up chances:
 ```
 TokensIn: "The" " capital" " of" " France"
 
-The capital of France …
+pass 1 ─ reads: The capital of France
    next token   chance
    " is"        ████████████████▍    82%  ◄ sampled
    ","          █▏                    6%
    " has"       ▊                     4%
    the rest     █▋                    8%
 
-The capital of France is …
+pass 2 ─ reads: The capital of France is
+   next token   chance
    " Paris"     ██████████████████▊  94%  ◄ sampled
    " a"         ▍                     2%
    " located"   ▏                     1%
    the rest     ▋                     3%
 
-The capital of France is Paris …
+pass 3 ─ reads: The capital of France is Paris
+   next token   chance
    "."          ██████████████▏      71%  ◄ sampled
    ","          ███                  15%
    " and"       █                     5%
    the rest     █▊                    9%
 
-The capital of France is Paris. …
+pass 4 ─ reads: The capital of France is Paris.
+   next token   chance
    (end)        █████████████████▋   88%  ◄ sampled
    " It"        █▏                    6%
    the rest     █▏                    6%
 
-TokensOut: " is" " Paris" "."
+TokensOut: " is" " Paris" "."   ◄ the sampled tokens, in order
 ```
 
 **TokensOut = Model(TokensIn)**
