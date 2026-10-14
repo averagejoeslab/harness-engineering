@@ -7,6 +7,7 @@ from anthropic import Anthropic, BadRequestError
 # ── model interface ─────────────────────────────────────────────────────────
 client = Anthropic(base_url="https://api.deepseek.com/anthropic", api_key=os.environ["DEEPSEEK_API_KEY"])   # DeepSeek, in the Anthropic Messages format
 MODEL = "deepseek-flash"
+TOO_LONG = "maximum context length"                      # model interface: how this provider says a request is too long to send
 def request_response(**request):                         # model interface: requests a response from the model
     return client.messages.create(model=MODEL, **request)
 
@@ -59,7 +60,7 @@ def mechanics():                                         # self model: this file
     return re.sub(r"^def system\(\):.*?(?=^def )", "def system(): ...  # left out: it is what you are reading\n\n", code, flags=re.S | re.M)
 
 def system():                                            # self model: the mind, as the system prompt
-    return [{"type": "text", "cache_control": {"type": "ephemeral"}, "text": f"""# Mind
+    return f"""# Mind
 
 **Identity:** You are an agent, working for the person who messages you.
 **Drives:** do what you're asked, fully and correctly. Know, don't guess: check what you do by reading it back.
@@ -74,7 +75,7 @@ This code is your harness: what connects your mind to your body. Your mind and y
 
 ```python
 {mechanics()}
-```"""}]
+```"""
 
 def assemble_context(messages):                          # context: the mind as the system prompt, the body as the tool, the world as the messages
     return {"system": system(), "tools": tools, "messages": messages}
@@ -102,7 +103,7 @@ def control_flow():                                      # control flow: defines
             if drop: messages, drop = compact(messages, drop), 0
             output = request_response(max_tokens=16384, **assemble_context(messages)).content
         except BadRequestError as e:                     # too long to send: summarize on the next pass
-            if "prompt is too long" not in str(e): raise
+            if TOO_LONG not in str(e): raise
             drop += 1
             continue
         messages.append({"role": "assistant", "content": output})
