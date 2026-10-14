@@ -4,7 +4,7 @@ By **[Chase Dovey](https://cdovey.dev/)** · [Average Joes Lab](https://github.c
 
 An agent loops: it **observes**, **thinks**, and **acts**, then does it again. It has two parts. The **model** is its mind: tokens go in, and it predicts what comes next. The **harness** is its body: it gets the model its input, carries out what the model says, and keeps the loop going.
 
-Harness engineering is building that body. A harness has five primitives:
+**Harness engineering** is the practice of building that body around the model. On its own, a model only predicts the next token. Inside a harness, it becomes something that can observe its environment and act on it. A harness has five primitives:
 
 | Primitive | What it does |
 |---|---|
