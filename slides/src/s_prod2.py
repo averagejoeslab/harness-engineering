@@ -111,15 +111,15 @@ content("built", "Recap", "What each primitive gave the agent",
         "Five primitives, one evaluation, six questions. That's the whole method.")
 
 content("every-agent", "From the paper", "Every agent is these five",
-        table(["", "Claude Code", "Codex CLI", "Gemini CLI", "Aider"],
-              [["Input", "terminal; headless -p", "terminal; codex exec", "terminal; @file, !shell", "chat modes: code, ask"],
-               ["Context", "CLAUDE.md, memory, skills", "AGENTS.md; compaction", "GEMINI.md; compression", "repo map, ranked"],
-               ["Model interface", "Anthropic API, streamed", "Responses API, streamed", "GenAI SDK, streamed", "many models, LiteLLM"],
-               ["Output", "~20 tools, plus MCP", "shell, apply_patch, MCP", "shell, file tools, MCP", "edit formats, not tools"],
-               ["Control flow", "loop; sub-agents", "loop; sub-agents", "loop; 100-turn cap", "edit, lint, test, retry"]],
-              [20, 20, 20, 20, 20], 24)
-        + p("Open any harness and you'll find the same five. The differences are implementation decisions.", 40),
-        "This comes from the case study in the paper, Agent = Harness(Model). Every popular harness fits the five primitives; what differs is how each primitive is built. That's the claim of the whole course.")
+        table(["", "Claude Code", "Codex CLI", "opencode", "pi", "Hermes Agent", "LangGraph"],
+              [["Input", "prompts, stdin, queued messages", "op channel, steer queue, mailbox", "durable inbox: steer or queue", "TUI, print, RPC; steer, follow-up", "one event from CLI, 25 gateways", "writes to a typed state"],
+               ["Context", "cached prefix, CLAUDE.md, compaction", "Responses items, world-state diffs", "event-sourced history, compaction", "session tree, sectioned prompt", "3-tier prompt, 50% compaction", "state messages; fitting is user code"],
+               ["Model interface", "Messages API, 10 retries, fallback", "Responses API, WS then HTTP", "in-house request per protocol", "one stream fn, 15 adapters", "pluggable transports, fallback chain", "one LangChain call per step"],
+               ["Output", "built-in + MCP, OS sandbox", "approve, sandbox, run; V8 code mode", "concurrent tools, code-mode interpreter", "parallel tools, QuickJS code mode", "sandboxed terminal, approval gate", "tool node, concurrent in-process"],
+               ["Control flow", "loop till no tool call; permission gate; depth 3", "task per turn; Guardian; sub-sessions", "fibre per session; child sessions", "inner, outer, session loops", "phase-verdict loop; stop-gate nudges", "a user-written graph"]],
+              [12, 15, 15, 15, 14, 15, 14], 24)
+        + p("Six harnesses, read at pinned commits. Every component had a home in one primitive.", 32),
+        "This is the summary table from the paper, Agent = Harness(Model): Five Mechanistic Primitives, and What Is Not One. Six harnesses read from source or documentation on one day; the evidence for every cell is published with the paper. What differs between them is the decision inside each primitive.")
 
 links = [("github.com/averagejoeslab/harness-engineering", "Every step and every run in this course, reproducible from `shop/`."),
          ("github.com/averagejoeslab/building-agents", "The book and the paper: building and training the model too."),
