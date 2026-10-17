@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Engine Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one scene. A banner across the top shows what's running, the engine (then the car) sits in the middle, the caption and controls dock to the bottom. One dark look by choice. */
+:root{
+  --bay:#0f141b;
+  --bay-2:#19212d;
+  --panel:rgba(15,20,27,.9);
+  --line:#2b384c;
+  --ink:#e8edf5;
+  --mute:#a9b5c8;
+  --amber:#f2a93b;
+  --blue:#5b8cff;
+  --cyan:#6fe3ff;
+  --green:#5fd38d;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bay);color:var(--ink);font-family:var(--f-body);overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:pointer}
+.banner{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));background:var(--panel);border:1px solid var(--line);padding:10px 14px 12px;pointer-events:none;display:flex;flex-direction:column;gap:8px;transition:opacity .4s}
+.banner.off{opacity:0}
+.bh{display:flex;justify-content:space-between;gap:12px;font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber)}
+.bh span{color:var(--mute);letter-spacing:.06em;text-transform:none;font-size:11px}
+.loop{display:flex;align-items:center;gap:10px;min-height:28px}
+.seq{display:flex;flex-wrap:wrap;gap:3px;align-items:center;flex:1;min-width:0}
+.chip{font-family:var(--f-mono);font-size:12px;padding:3px 6px;white-space:pre;border:1px solid}
+.chip.in{border-color:var(--blue);color:#dbe5ff;background:rgba(91,140,255,.16)}
+.chip.out{border-color:var(--amber);color:#ffe4b8;background:rgba(242,169,59,.16)}
+.chip.end{border-color:var(--mute);color:var(--mute)}
+.new{animation:pop .3s ease both}
+@keyframes pop{from{transform:translateY(-6px);opacity:0}to{transform:none;opacity:1}}
+.step{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:11px;color:var(--mute);white-space:nowrap}
+.model{padding:3px 8px;border:1px solid var(--line);color:var(--ink);letter-spacing:.08em;text-transform:uppercase;font-size:10px}
+.model.on{border-color:var(--amber);background:var(--amber);color:#1b1f26}
+.slot{min-width:58px;display:flex}
+.prims{display:flex;flex-wrap:wrap;gap:6px}
+.prim{font-family:var(--f-mono);font-size:12px;padding:4px 8px;border:1px dashed var(--line);color:var(--mute);transition:all .3s}
+.prim b{font-weight:500}
+.prim.on{border-style:solid;color:var(--ink)}
+.prim.cur{color:#1b1f26}
+.prod{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;font-family:var(--f-mono);font-size:12px;align-items:center}
+.prod .c{color:var(--mute)}
+.prod .c.on{color:var(--ink)}
+.prod .c.cur{color:var(--amber)}
+.prod .ps{display:flex;flex-wrap:wrap;gap:4px}
+.pp{font-size:11px;padding:1px 6px;border:1px solid;opacity:.4}
+.prod .ps.on .pp,.prod .ps.cur .pp{opacity:1}
+.prod .lap{color:var(--green);font-size:11px;white-space:nowrap}
+.log{display:flex;flex-direction:column;gap:2px;font-family:var(--f-mono);font-size:12px;line-height:1.5}
+.log div{white-space:pre-wrap;word-break:break-word}
+.log .i{color:#cfdcff}
+.log .a{color:#ffe1b0}
+.log .r{color:var(--cyan);padding-left:1.4em}
+.log .ok{color:var(--green)}
+.log .ok.ind{padding-left:1.4em}
+.log .s{color:var(--ink)}
+.cap{position:fixed;left:0;right:0;bottom:0;padding-top:40px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 16px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:linear-gradient(to top,var(--bay) 58%,rgba(15,20,27,0));display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.cap h1{margin:0;font-family:var(--f-display);font-weight:800;font-size:clamp(30px,4.6vw,52px);line-height:.95;letter-spacing:.01em;text-transform:uppercase;text-wrap:balance}
+.cap h1 span{color:var(--amber)}
+.cap p{margin:0;max-width:62ch;color:var(--mute);font-size:16px;line-height:1.45}
+#notes{max-width:72ch;font-family:var(--f-mono);font-size:12px;line-height:1.55;color:#d5dceb;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);padding:8px 12px}
+.nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;pointer-events:auto;margin-top:2px}
+button{font:500 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--bay-2);border:1px solid var(--line);padding:7px 10px;cursor:pointer}
+button:hover{border-color:var(--mute)}
+button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button:disabled{opacity:.35;cursor:default}
+button[aria-pressed="true"]{border-color:var(--amber);color:var(--amber)}
+.count{font-family:var(--f-mono);font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums;padding:0 4px}
+.hint{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);animation:pulse 2s ease-in-out infinite;margin-left:6px}
+.hint.busy{color:var(--mute);animation:none}
+@keyframes pulse{50%{opacity:.35}}
+.tag{position:fixed;left:0;top:0;pointer-events:none;font-family:var(--f-mono);font-weight:700;font-size:12px;letter-spacing:.04em;padding:4px 8px;white-space:nowrap;opacity:0;transition:opacity .5s;background:var(--ink);color:#1b1f26}
+.tag.on{opacity:1}
+.tag.ok{background:var(--green);color:#10261a;font-size:14px}
+@media (max-width:640px){
+  .cap p{font-size:15px}
+  .chip{font-size:10px;padding:2px 4px}
+  .loop{flex-direction:column;align-items:stretch;gap:6px}
+  .bh span{display:none}
+  .tag{font-size:10px}
+  .prim{font-size:10px;padding:3px 6px}
+  .log,.prod{font-size:10px}
+  .pp{font-size:9px}
+  .hint{display:none}
+  #notes{font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){.hint,.new{animation:none}}
+</style>
+</head>
+<body>
+
+<canvas id="c" aria-label="Tap through: an engine whose output piles up, a car built around it one harness primitive at a time, production upgrades swapped into the same parts, and laps on a test track."></canvas>
+
+<div class="banner off" id="banner"></div>
+<div id="tags"></div>
+
+<div class="cap">
+  <h1 id="h"></h1>
+  <p id="p"></p>
+  <div id="notes" hidden></div>
+  <div class="nav">
+    <button id="back" type="button">Back</button>
+    <button id="restart" type="button">Restart</button>
+    <button id="ntog" type="button" aria-pressed="false">Notes</button>
+    <span class="count" id="count"></span>
+    <span class="hint" id="hint"></span>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const REDUCE=!!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);
+const TAU=Math.PI*2;
+const C={graphite:0x3a414d,dark:0x1b1f26,steel:0x8b95a5,metal:0xb3bcc8,amber:0xf2a93b,amberLt:0xffcf7a,copper:0xc8783e,blue:0x5b8cff,
+  cobalt:0x2f6fe0,cobaltDk:0x2152b3,cobaltLn:0x1a428f,stripe:0xf1f4f8,glass:0x9fd3f2,sill:0x23272f,head:0xfff1d2,tail:0xff3b30,
+  tire:0x17191e,tread:0x22252c,rim:0xc9d0da,seat:0x2a2f3a,cyan:0x6fe3ff,green:0x5fd38d,
+  mi:0xf2a93b,in:0x5b8cff,out:0xff7a59,cf:0xb48cff,cx:0x4fd1c5};
+const PRIM={mi:{name:"Model interface",css:"#f2a93b",fg:"#1b1f26"},in:{name:"Input",css:"#5b8cff",fg:"#ffffff"},out:{name:"Output",css:"#ff7a59",fg:"#1b1f26"},cf:{name:"Control flow",css:"#b48cff",fg:"#1b1f26"},cx:{name:"Context",css:"#4fd1c5",fg:"#1b1f26"}};
+
+// ================================================================ scene
+const canvas=$("c");
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputEncoding=THREE.sRGBEncoding;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0f141b);scene.fog=new THREE.Fog(0x0f141b,7,18);
+const camera=new THREE.PerspectiveCamera(38,1,.02,100);
+scene.add(new THREE.HemisphereLight(0xcfdcff,0x1a2230,.55));
+const key=new THREE.DirectionalLight(0xfff3e2,1.15);key.position.set(1.5,6,3.5);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera,{left:-4.5,right:4.5,top:4.5,bottom:-4.5,near:.5,far:16});key.shadow.bias=-.0004;scene.add(key);key.target.position.set(-1.2,0,0);scene.add(key.target);
+const rimL=new THREE.DirectionalLight(0x8fb0ff,.4);rimL.position.set(-3,2,-4);scene.add(rimL);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(40,64),new THREE.MeshStandardMaterial({color:0x222a35,roughness:.95}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(20,80,0x2f3b4e,0x27313f);grid.position.y=.002;scene.add(grid);
+const OFF=-1.25;
+const eng=new THREE.Group();eng.position.x=OFF;scene.add(eng);   // the engine, and the car built around it, share this frame
+
+// ================================================================ voxel modeling helpers
+function rnd(i){const s=Math.sin(i*127.1+311.7)*43758.5453;return s-Math.floor(s);}
+function sdBox(x,y,z,cx,cy,cz,hx,hy,hz,r){r=r||0;const qx=Math.abs(x-cx)-hx+r,qy=Math.abs(y-cy)-hy+r,qz=Math.abs(z-cz)-hz+r;return Math.hypot(Math.max(qx,0),Math.max(qy,0),Math.max(qz,0))+Math.min(Math.max(qx,qy,qz),0)-r;}
+function sdCap(x,y,z,a,b,ra,rb){if(rb===undefined)rb=ra;const bx=b[0]-a[0],by=b[1]-a[1],bz=b[2]-a[2],px=x-a[0],py=y-a[1],pz=z-a[2];const h=Math.max(0,Math.min(1,(px*bx+py*by+pz*bz)/(bx*bx+by*by+bz*bz||1)));return Math.hypot(px-bx*h,py-by*h,pz-bz*h)-(ra+(rb-ra)*h);}
+function sdEll(x,y,z,cx,cy,cz,rx,ry,rz){const k0=Math.hypot((x-cx)/rx,(y-cy)/ry,(z-cz)/rz),k1=Math.hypot((x-cx)/(rx*rx),(y-cy)/(ry*ry),(z-cz)/(rz*rz));return k1?k0*(k0-1)/k1:-Math.min(rx,ry,rz);}
+function smin(a,b,k){const h=Math.max(k-Math.abs(a-b),0)/k;return Math.min(a,b)-h*h*k*.25;}
+function segs(pts,r){const s=[];for(let i=0;i<pts.length-1;i++)s.push([pts[i],pts[i+1],r]);return s;}
+function bSegs(list,pad){let b=[1e9,-1e9,1e9,-1e9,1e9,-1e9];list.forEach(t=>[t[0],t[1]].forEach(p=>{const r=t[2]+pad;b[0]=Math.min(b[0],p[0]-r);b[1]=Math.max(b[1],p[0]+r);b[2]=Math.min(b[2],p[1]-r);b[3]=Math.max(b[3],p[1]+r);b[4]=Math.min(b[4],p[2]-r);b[5]=Math.max(b[5],p[2]+r);}));return b;}
+function vox(o){const r=o.r,b=o.b,th=o.th||1.1,out=[];
+  for(let i=Math.floor(b[0]/r);i<=Math.ceil(b[1]/r);i++)for(let j=Math.floor(b[2]/r);j<=Math.ceil(b[3]/r);j++)for(let k=Math.floor(b[4]/r);k<=Math.ceil(b[5]/r);k++){
+    const x=i*r,y=j*r,z=k*r,d=o.d(x,y,z);if(d>r*.5||d<-r*th)continue;const c=o.c?o.c(x,y,z):[o.col,o.kind||0];if(!c)continue;out.push({x,y,z,c:c[0],k:c[1]||0});}
+  return out;}
+function tubesVox(list,r,c){const map=new Map();list.forEach(t=>{vox({r,b:bSegs([t],r),d:(x,y,z)=>sdCap(x,y,z,t[0],t[1],t[2]),c}).forEach(v=>map.set(Math.round(v.x/r)+","+Math.round(v.y/r)+","+Math.round(v.z/r),v));});return [...map.values()];}
+function boxVox(r,cx,cy,cz,hx,hy,hz,c,rad){return vox({r,b:[cx-hx-r,cx+hx+r,cy-hy-r,cy+hy+r,cz-hz-r,cz+hz+r],d:(x,y,z)=>sdBox(x,y,z,cx,cy,cz,hx,hy,hz,rad||0),c});}
+
+// ================================================================ voxel parts that assemble and come apart
+const CUBE=new THREE.BoxGeometry(1,1,1),dummy=new THREE.Object3D(),P={},parts=[];
+let clock=0,INSTANT=false;
+function part(name,r,list,o){
+  o=Object.assign({from:"above",spread:1.2,dur:.8},o||{});
+  const g=new THREE.Group();if(o.pos)g.position.set(...o.pos);eng.add(g);const col=new THREE.Color(),meshes=[];
+  [0,1,2].forEach(kind=>{const L=list.filter(v=>v.k===kind);if(!L.length)return;
+    const mat=kind===1?new THREE.MeshBasicMaterial():kind===2?new THREE.MeshStandardMaterial({roughness:.1,metalness:.3,transparent:true,opacity:.45,depthWrite:false}):new THREE.MeshStandardMaterial({roughness:.55,metalness:.15});
+    const m=new THREE.InstancedMesh(CUBE,mat,L.length);m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const key=o.from==="below"?(v=>-v.y):o.from==="sides"?(v=>-Math.abs(v.z)):(v=>v.y);
+    const order=L.map((v,i)=>i).sort((a,b)=>key(L[a])-key(L[b])+(rnd(a)-rnd(b))*.12);
+    order.forEach((i,rank)=>{const v=L[i],r1=rnd(i*3.1+L.length),r2=rnd(i*7.3+name.length),r3=rnd(i*11.7);
+      v.d=o.spread*(rank/L.length)*.85+r1*o.spread*.15;
+      const sg=Math.sign(o.pos?o.pos[2]:v.z)||1;
+      v.o=o.from==="below"?[(r1-.5)*1.2,-.9-r2,(r3-.5)*1.2]:o.from==="sides"?[(r1-.5)*.6,.2+r2*.5,sg*(1.8+r3*1.2)]:o.from==="back"?[-2.2-r1*1.5,.3+r2,(r3-.5)*1.5]:o.from==="pop"?[(r1-.5)*.4,.3+r2*.4,(r3-.5)*.4]:[(r1-.5)*2.4,1.6+r2*1.8,(r3-.5)*2.4];});
+    L.forEach((v,i)=>{col.setHex(v.c);m.setColorAt(i,col);});
+    m.castShadow=kind!==2;m.receiveShadow=kind===0;m.frustumCulled=false;m.visible=false;m.userData={L,s:r*.94,kind};g.add(m);meshes.push(m);});
+  const p={name,g,meshes,o,state:"hidden",t0:0};P[name]=p;parts.push(p);return p;}
+function setPart(p,t){const out=p.state==="out";
+  p.meshes.forEach(m=>{const {L,s}=m.userData;
+    for(let i=0;i<L.length;i++){const v=L[i];let k=out?1-(t-v.d*.5)/.6:(t-v.d)/p.o.dur;
+      if(k<=0){dummy.position.set(0,-50,0);dummy.scale.setScalar(1e-4);}
+      else{k=Math.min(1,k);const e=1-Math.pow(1-k,3);dummy.position.set(v.x+v.o[0]*(1-e),v.y+v.o[1]*(1-e),v.z+v.o[2]*(1-e));dummy.scale.setScalar(s*(.4+.6*e));}
+      dummy.updateMatrix();m.setMatrixAt(i,dummy.matrix);}
+    m.instanceMatrix.needsUpdate=true;});}
+function finish(p){if(p.state==="out"){p.meshes.forEach(m=>m.visible=false);p.state="hidden";}else if(p.state==="in"){setPart(p,1e9);p.state="done";}}
+function build(name,delay){const p=P[name];p.meshes.forEach(m=>m.visible=true);p.state="in";p.t0=clock+(delay||0);if(INSTANT||REDUCE)finish(p);else setPart(p,-1);}
+function unbuild(name,delay){const p=P[name];if(p.state==="hidden")return;if(p.state==="in")finish(p);p.state="out";p.t0=clock+(delay||0);if(INSTANT||REDUCE)finish(p);}
+function swap(a,b,delay){unbuild(a,delay||0);build(b,(delay||0)+.5);}
+function animParts(){parts.forEach(p=>{if(p.state!=="in"&&p.state!=="out")return;const t=clock-p.t0;if(t<0&&p.state==="in")return;
+  setPart(p,t);const end=p.state==="in"?p.o.spread+p.o.dur+.05:p.o.spread*.5+.65;if(t>end)finish(p);});}
+
+// ================================================================ the engine (the model)
+part("stand",.025,(()=>{const S=[[[1.0,.19,-.16],[.92,0,-.32]],[[1.0,.19,.16],[.92,0,.32]],[[1.5,.19,-.16],[1.58,0,-.32]],[[1.5,.19,.16],[1.58,0,.32]],[[.92,0,-.32],[1.58,0,-.32]],[[.92,0,.32],[1.58,0,.32]],[[1.0,.19,-.16],[1.5,.19,-.16]],[[1.0,.19,.16],[1.5,.19,.16]],[[.92,0,-.32],[.92,0,.32]],[[1.58,0,-.32],[1.58,0,.32]]];
+  return vox({r:.025,b:[.85,1.65,-.03,.24,-.38,.38],d:(x,y,z)=>Math.min(...S.map(s=>sdCap(x,y,z,s[0],s[1],.024))),c:(x,y,z)=>y<.03?[C.graphite]:[C.steel]});})(),{from:"below",spread:.6});
+function engineSD(x,y,z){
+  let d=sdBox(x,y,z,1.25,.45,0,.4,.17,.24,.04);
+  d=Math.min(d,sdBox(x,y,z,1.25,.24,0,.32,.05,.18,.02),sdBox(x,y,z,1.25,.68,0,.38,.06,.21,.03),sdCap(x,y,z,[.98,.79,0],[1.5,.79,0],.055));
+  for(const xi of[1.0,1.17,1.33,1.5])d=Math.min(d,sdCap(x,y,z,[xi,.79,.02],[xi,.72,.15],.022),sdCap(x,y,z,[xi,.6,-.22],[1.2,.36,-.36],.022));
+  return Math.min(d,sdBox(x,y,z,1.665,.47,0,.02,.2,.19,.01),sdBox(x,y,z,.83,.45,0,.02,.19,.2,.01));}
+part("engine",.02,vox({r:.02,b:[.78,1.74,.15,.92,-.42,.34],d:engineSD,
+  c:(x,y,z)=>{if(z<-.24&&y<.62)return[C.copper];if(y>.73&&Math.abs(z)<.07)return[C.metal];if(y>.62&&y<.75)return[(Math.round(x/.06)%2)?C.amber:C.amberLt];
+    if(y<.29||x>1.64||x<.86)return[C.dark];if(Math.abs(y-.5)<.012)return[C.amber];return[C.graphite];}}),{spread:1.8});
+part("engineB",.02,vox({r:.02,b:[.78,1.74,.15,.92,-.42,.34],d:engineSD,
+  c:(x,y,z)=>{if(z<-.24&&y<.62)return[0x6d7a86];if(y>.73&&Math.abs(z)<.07)return[C.metal];if(y>.62&&y<.75)return[(Math.round(x/.06)%2)?0x7a5cd6:0xb48cff];
+    if(y<.29||x>1.64||x<.86)return[C.dark];if(Math.abs(y-.5)<.012)return[0xb48cff,1];return[0x2b2f45];}}),{spread:1.6});
+function throttleVox(glow){return vox({r:.016,b:[1.12,1.38,.78,1.02,-.13,.13],d:(x,y,z)=>Math.max(Math.abs(Math.hypot(x-1.25,z)-.085)-.016,Math.abs(y-.9)-.08),c:(x,y,z)=>y>.955?[glow,1]:[C.steel]});}
+part("throttle",.016,throttleVox(C.blue),{spread:.4});
+part("throttleB",.016,throttleVox(0xb48cff),{spread:.4});
+function pulleyVox(a1){return vox({r:.016,b:[-.03,.03,-.13,.13,-.13,.13],th:3,d:(x,y,z)=>Math.max(Math.hypot(y,z)-.115,Math.abs(x)-.015),
+  c:(x,y,z)=>{const a=Math.atan2(y,z);return Math.hypot(y,z)<.03?[C.metal]:[(Math.floor((a+Math.PI)/(TAU/6))%2)?a1:C.steel];}});}
+part("pulley",.016,pulleyVox(C.amber),{pos:[1.715,.45,0],spread:.4});
+part("pulleyB",.016,pulleyVox(0xb48cff),{pos:[1.715,.45,0],spread:.4});
+part("flywheel",.016,vox({r:.016,b:[-.32,.05,-.24,.24,-.24,.24],th:3,d:(x,y,z)=>{const q=Math.hypot(y,z);return Math.min(Math.max(q-.21,Math.abs(x)-.03),Math.max(q-.045,Math.abs(x+.15)-.15),Math.max(q-.1,Math.abs(x+.3)-.015));},
+  c:(x,y,z)=>{const q=Math.hypot(y,z),a=Math.atan2(y,z);if(x<-.28)return[(Math.floor((a+Math.PI)/(TAU/8))%2)?C.amber:C.metal];if(x<-.02)return[C.metal];if(q>.18)return[(Math.floor((a+Math.PI)/(TAU/24))%2)?C.steel:C.graphite];return[q<.06?C.amber:C.graphite];}}),{pos:[.76,.45,0],spread:.4});
+
+// ================================================================ the body (the harness)
+// 1 · model interface: engine mounts and the wiring harness
+const MOUNTS=vox({r:.02,b:[.85,1.65,.18,.4,-.6,.6],d:(x,y,z)=>{let d=1e9;
+  for(const mx of[.95,1.55])for(const s of[-1,1])d=Math.min(d,sdCap(x,y,z,[mx,.3,s*.25],[mx,.3,s*.33],.045),sdBox(x,y,z,mx,.29,s*.45,.035,.025,.12,.01));
+  return d;},c:(x,y,z)=>Math.abs(z)<.34?[C.dark]:[C.steel]});
+part("mounts",.02,MOUNTS,{from:"below",spread:.8});
+part("mountsB",.02,MOUNTS.map(v=>Math.abs(v.z)<.34?Object.assign({},v,{c:C.mi,k:1}):v),{from:"below",spread:.8});
+const ECU=vox({r:.016,b:[.42,.62,.64,.8,.3,.55],d:(x,y,z)=>sdBox(x,y,z,.52,.72,.42,.08,.05,.11,.012),c:(x,y,z)=>y>.765?[C.cyan,1]:[C.cobaltDk]});
+const LOOM_SEGS=segs([[.6,.74,.36],[.8,.86,.3],[1.0,.84,.2],[1.15,.8,.12]],.014).concat(segs([[.6,.72,.46],[.82,.62,.5],[1.05,.6,.26]],.012));
+const LOOM=tubesVox(LOOM_SEGS,.016,()=>[C.dark]);LOOM.forEach((v,i)=>{if(i%5===0)v.c=C.amber;});
+const REC=boxVox(.016,.29,.7,.43,.08,.07,.1,(x,y,z)=>(y>.755&&Math.abs(z-.43)<.03)?[C.tail,1]:[C.dark],.01);
+const SPARE=tubesVox(segs([[.6,.68,.52],[.85,.56,.58],[1.08,.56,.3]],.012),.016,()=>[C.mi,1]);
+const FLOW=tubesVox(LOOM_SEGS.map(t=>[t[0],t[1],t[2]*1.9]),.016,()=>[C.mi,1]);
+part("wiring",.016,ECU.concat(LOOM),{from:"pop",spread:1});
+part("wiringObs",.016,ECU.concat(LOOM,REC),{from:"pop",spread:.8});
+part("wiringRes",.016,ECU.concat(LOOM,REC,SPARE),{from:"pop",spread:.8});
+part("wiringPerf",.016,ECU.concat(FLOW,REC,SPARE),{from:"pop",spread:.8});
+// 2 · input: seats, steering wheel, pedals
+part("seats",.03,vox({r:.03,b:[-.9,.0,.18,1.05,-.68,.68],d:(x,y,z)=>{let d=1e9;
+  for(const s of[-1,1]){const cz=s*.38;d=Math.min(d,sdBox(x,y,z,-.3,.32,cz,.24,.05,.2,.04));
+    const dx=x+.6,dy=y-.62,c=Math.cos(.25),sn=Math.sin(.25),lx=dx*c+dy*sn,ly=-dx*sn+dy*c;d=Math.min(d,sdBox(lx,ly,z,0,0,cz,.05,.28,.2,.04),sdBox(x,y,z,-.75,.98,cz,.04,.07,.11,.03));}
+  return d;},c:(x,y,z)=>Math.abs(Math.abs(z)-.38)>.17?[C.amber]:[C.seat]}),{from:"back",spread:1});
+const STEER=(()=>{const c=[.15,.84,-.38],ca=Math.cos(.35),sa=Math.sin(.35),n=[ca,sa,0],u=[-sa,ca,0],w=[0,0,1];
+  const rimPt=(a,R)=>[c[0]+(u[0]*Math.cos(a)+w[0]*Math.sin(a))*R,c[1]+(u[1]*Math.cos(a)+w[1]*Math.sin(a))*R,c[2]+(u[2]*Math.cos(a)+w[2]*Math.sin(a))*R];
+  const spokes=[0,2.1,4.2].map(a=>[c,rimPt(a-1.57,.16)]);
+  return vox({r:.012,b:[.0,.6,.6,1.08,-.6,-.16],d:(x,y,z)=>{const qx=x-c[0],qy=y-c[1],qz=z-c[2],h=qx*n[0]+qy*n[1]+qz*n[2],rx=qx-h*n[0],ry=qy-h*n[1],rz=qz-h*n[2];
+    let d=Math.hypot(Math.hypot(rx,ry,rz)-.17,h)-.022;d=Math.min(d,sdCap(x,y,z,[.56,.62,-.38],[.18,.83,-.38],.022));for(const sp of spokes)d=Math.min(d,sdCap(x,y,z,sp[0],sp[1],.012));return d;},
+    c:(x,y,z)=>Math.hypot(x-c[0],y-c[1],z-c[2])<.04?[C.blue]:[C.dark]});})();
+part("steer",.012,STEER,{from:"pop",spread:.8});
+part("steerKey",.012,STEER.concat(vox({r:.012,b:[.3,.5,.6,.8,-.38,-.2],d:(x,y,z)=>Math.min(sdCap(x,y,z,[.4,.7,-.35],[.4,.7,-.27],.03),sdBox(x,y,z,.4,.7,-.235,.008,.035,.014,.004)),
+  c:(x,y,z)=>z>-.26?[C.in,1]:[C.metal]})),{from:"pop",spread:.6});
+part("pedals",.012,vox({r:.012,b:[.5,.68,.16,.36,-.52,-.24],d:(x,y,z)=>Math.min(sdBox(x,y,z,.6,.25,-.3,.012,.07,.035,.006),sdBox(x,y,z,.6,.27,-.45,.012,.045,.055,.006)),
+  c:(x,y,z)=>z>-.38?[C.metal]:[C.dark]}).concat(tubesVox(segs([[.61,.32,-.3],[.6,.55,-.1],[.55,.7,.32]],.009),.012,()=>[C.blue])),{from:"pop",spread:.6});
+// 3 · output: hubs and wheels
+const HUBS=vox({r:.02,b:[-1.45,1.45,.18,.5,-.76,.76],d:(x,y,z)=>{let d=1e9;for(const hx of[-1.35,1.35])for(const s of[-1,1])d=Math.min(d,sdBox(x,y,z,hx,.34,s*.62,.035,.1,.025,.01),sdCap(x,y,z,[hx,.34,s*.6],[hx,.34,s*.72],.03));return d;},col:C.steel});
+part("hubs",.02,HUBS,{from:"sides",spread:.6});
+part("hubsBox",.02,HUBS.concat([-1.35,1.35].flatMap(hx=>[-1,1].flatMap(s=>vox({r:.02,b:[hx-.12,hx+.12,.18,.5,s*.6-.1,s*.6+.1],d:(x,y,z)=>sdBox(x,y,z,hx,.34,s*.6,.09,.13,.06,.02),th:.9,c:()=>[C.out,2]})))),{from:"sides",spread:.6});
+function wheelVox(hw,s,rf){const r=.02,out=[];
+  for(let ly=-.36;ly<=.36;ly+=r)for(let lx=-.36;lx<=.36;lx+=r)for(let lz=-hw;lz<=hw+1e-6;lz+=r){const q=Math.hypot(lx,ly),a=Math.atan2(ly,lx);let c=null,k=0;
+    if(q<=.34&&q>=.2){const tread=q>.34-r*1.05,side=Math.abs(lz)>hw-r*1.05,inner=q<.2+r*1.05;
+      if(tread||side||inner){c=C.tire;if(tread&&(Math.floor((a+Math.PI)/(TAU/48))%2))c=C.tread;
+        if(side&&lz*s>0&&Math.abs(q-.3)<(rf?.018:.008)){c=rf?C.out:0x3a3f48;k=rf?1:0;}}}
+    else if(q<.2&&Math.abs(lz-s*(hw-.05))<.022){const spoke=Math.abs(((a+Math.PI)%(TAU/5))-TAU/10)<.16;if(q>.175||q<.045||spoke)c=q<.045?C.amber:C.rim;}
+    else if(q<.17&&q>.06&&Math.abs(lz)<.011)c=C.steel;
+    if(c!==null)out.push({x:+lx.toFixed(3),y:+ly.toFixed(3),z:+lz.toFixed(3),c,k});}
+  return out;}
+const WHEELS=[["wFL",1.35,-1],["wFR",1.35,1],["wRL",-1.35,-1],["wRR",-1.35,1]];
+WHEELS.forEach(([n,x,s])=>{part(n,.02,wheelVox(.13,s),{pos:[x,.34,s*.8],from:"sides",spread:.8});part(n+"R",.02,wheelVox(.13,s,true),{pos:[x,.34,s*.8],from:"sides",spread:.8});});
+// 4 · control flow: gearbox, driveline, shifter
+const GEARBOX=vox({r:.02,b:[.05,.92,.26,.66,-.2,.2],d:(x,y,z)=>sdCap(x,y,z,[.86,.47,0],[.2,.43,0],.15,.085),c:(x,y,z)=>Math.abs(x-.62)<.02?[C.cobalt]:[C.graphite]});
+part("gearbox",.02,GEARBOX,{spread:.9});
+part("gearboxMem",.02,GEARBOX.map(v=>Math.abs(v.x-.45)<.03?Object.assign({},v,{c:C.cf,k:1}):v),{spread:.8});
+part("driveline",.02,vox({r:.02,b:[-1.55,.25,.18,.55,-.68,.68],d:(x,y,z)=>{let d=Math.min(sdCap(x,y,z,[.2,.43,0],[-1.22,.37,0],.032),sdEll(x,y,z,-1.35,.36,0,.13,.12,.12));
+  for(const s of[-1,1])d=Math.min(d,sdCap(x,y,z,[-1.35,.36,s*.1],[-1.35,.34,s*.62],.024));return d;},c:(x,y,z)=>(x<-1.2&&Math.abs(z)<.14)?[C.cobaltDk]:[C.metal]}),{from:"back",spread:.9});
+part("shifter",.01,vox({r:.01,b:[.05,.3,.22,.56,-.06,.1],d:(x,y,z)=>Math.min(sdCap(x,y,z,[.16,.28,0],[.13,.48,0],.011),sdEll(x,y,z,.13,.5,0,.026,.026,.026),sdBox(x,y,z,.22,.3,.05,.03,.012,.025,.004)),
+  c:(x,y,z)=>(x>.19&&y<.32)?[C.green,1]:[C.dark]}),{from:"pop",spread:.5});
+// 5 · context: the frame that ties every part together
+const FRAME_SEGS=[];
+for(const s of[-1,1]){FRAME_SEGS.push([[-1.95,.27,s*.55],[1.95,.27,s*.55],.045],[[1.35,.27,s*.55],[1.35,.64,s*.56],.03],[[-1.35,.27,s*.55],[-1.35,.64,s*.56],.03],
+  [[1.35,.64,s*.56],[1.35,.42,s*.62],.022],[[-1.35,.64,s*.56],[-1.35,.42,s*.62],.022],[[-1.0,.25,s*.86],[.9,.25,s*.86],.035],[[-.35,.27,s*.55],[-.35,.25,s*.86],.028],
+  [[.62,.27,s*.55],[.62,.25,s*.86],.028],[[.62,.27,s*.55],[.62,.86,s*.55],.028]);}
+for(const x of[1.95,.62,-.35,-1.95])FRAME_SEGS.push([[x,.27,-.55],[x,.27,.55],.035]);
+FRAME_SEGS.push([[.62,.86,-.55],[.62,.86,.55],.028],[[2.1,.4,-.72],[2.1,.4,.72],.04],[[-2.1,.42,-.72],[-2.1,.42,.72],.04],[[1.95,.27,-.55],[2.1,.4,-.6],.03],[[1.95,.27,.55],[2.1,.4,.6],.03],[[-1.95,.27,-.55],[-2.1,.42,-.6],.03],[[-1.95,.27,.55],[-2.1,.42,.6],.03]);
+const FRAME=tubesVox(FRAME_SEGS,.024,(x,y,z)=>FRAME_SEGS.some(t=>[t[0],t[1]].some(p=>Math.hypot(x-p[0],y-p[1],z-p[2])<.06))?[C.cobalt]:[C.steel]);
+const LOGBOX=boxVox(.024,-1.72,.42,0,.24,.13,.26,(x,y,z)=>(y>.52&&Math.abs(z)<.18)?[C.cx,1]:[0x235a55],.02);
+const CACHE=boxVox(.024,-1.72,.64,0,.12,.06,.14,()=>[C.cx,1],.01);
+part("frame",.024,FRAME,{from:"below",spread:1.6});
+part("frameLog",.024,FRAME.concat(LOGBOX),{from:"below",spread:1.2});
+part("frameCache",.024,FRAME.concat(LOGBOX,CACHE),{from:"below",spread:1.2});
+// the body shell
+function hoodY(x){return .95-Math.max(0,x-.85)*.13;}
+function bodySD(x,y,z){
+  let lower=Math.max(sdBox(x,y,z,0,.585,0,2.2,.365,.93,.14),y-hoodY(x),y-(.95-Math.max(0,-1.6-x)*.18));
+  let cab=Math.max(sdBox(x,y,z,-.25,1.1,0,1.0,.2,.76,.12),(y-(1.3-x*.75))*.8,(y-(1.3-(-.75-x)*.62))*.85);
+  let d=smin(lower,cab,.1);
+  d=Math.max(d,.43-Math.min(Math.hypot(x-1.35,y-.34),Math.hypot(x+1.35,y-.34)));
+  d=Math.max(d,.12-Math.hypot(x-1.25,z));
+  return Math.min(d,sdBox(x,y,z,.6,.98,Math.sign(z)*.97,.06,.045,.07,.02),sdBox(x,y,z,-2.02,1.0,0,.13,.02,.82,.01));}
+part("body",.04,vox({r:.04,b:[-2.36,2.36,.14,1.38,-1.08,1.08],d:bodySD,c:(x,y,z)=>{const az=Math.abs(z);
+  if(x>2.06&&y>.58&&y<.76&&az>.42&&az<.82)return[C.head,1];
+  if(x<-2.08&&y>.68&&y<.84&&az>.42&&az<.86)return[C.tail,1];
+  if(x>2.08&&y>.36&&y<.56&&az<.5)return[C.dark];
+  if(y<.3)return[C.sill];
+  const inCab=y>.94&&x>-1.33&&x<.64;
+  if(inCab){if(y>1.24)return[(az>.07&&az<.17)?C.stripe:C.cobalt];if(Math.abs(x+.3)<.05)return[C.cobalt];return[C.glass,2];}
+  if(y>hoodY(x)-.08&&az>.07&&az<.17&&(x>.6||x<-1.3))return[C.stripe];
+  if(az>.86&&(Math.abs(x-.62)<.02||Math.abs(x+1.12)<.02)&&y<.93)return[C.cobaltLn];
+  if(y<.42)return[C.cobaltDk];return[C.cobalt];}}),{spread:2.2,dur:.9});
+
+// ================================================================ the test track
+const track=new THREE.Group();scene.add(track);
+const lineMat=new THREE.MeshBasicMaterial({color:0xe8edf5,transparent:true,opacity:0});
+for(const z of[-1.45,1.45]){const m=new THREE.Mesh(new THREE.PlaneGeometry(40,.06),lineMat);m.rotation.x=-Math.PI/2;m.position.set(0,.004,z);track.add(m);}
+const laneDashes=[];for(let i=0;i<48;i++){const m=new THREE.Mesh(new THREE.PlaneGeometry(.45,.05),lineMat);m.rotation.x=-Math.PI/2;m.position.set(0,.004,i%2?2.9:-2.9);m.userData.bx=-12+(i>>1);track.add(m);laneDashes.push(m);}
+const finCv=document.createElement("canvas");finCv.width=32;finCv.height=256;(g=>{for(let y=0;y<32;y++)for(let x=0;x<4;x++){g.fillStyle=(x+y)%2?"#e8edf5":"#11151c";g.fillRect(x*8,y*8,8,8);}})(finCv.getContext("2d"));
+const finTex=new THREE.CanvasTexture(finCv);finTex.magFilter=THREE.NearestFilter;
+const finishLine=new THREE.Mesh(new THREE.PlaneGeometry(.4,2.9),new THREE.MeshBasicMaterial({map:finTex,transparent:true,opacity:0}));finishLine.rotation.x=-Math.PI/2;finishLine.position.y=.005;scene.add(finishLine);
+
+// ================================================================ word blocks
+const TOK=.13,TGEO=new THREE.BoxGeometry(TOK,TOK,TOK),texCache={};
+function tex(word,bg,fg){const k=word+bg;if(texCache[k])return texCache[k];const cv=document.createElement("canvas");cv.width=cv.height=128;const g=cv.getContext("2d");
+  g.fillStyle=bg;g.fillRect(0,0,128,128);g.strokeStyle="rgba(0,0,0,.25)";g.lineWidth=6;g.strokeRect(3,3,122,122);g.fillStyle=fg;
+  const w=word.trim()||"·";let fs=56;g.font="700 "+fs+"px 'JetBrains Mono',monospace";while(g.measureText(w).width>112&&fs>18){fs-=4;g.font="700 "+fs+"px 'JetBrains Mono',monospace";}
+  g.textAlign="center";g.textBaseline="middle";g.fillText(w,64,68);const t=new THREE.CanvasTexture(cv);t.encoding=THREE.sRGBEncoding;t.anisotropy=4;texCache[k]=t;return t;}
+function block(word,isIn){const m=new THREE.Mesh(TGEO,new THREE.MeshStandardMaterial({map:isIn?tex(word,"#5b8cff","#ffffff"):tex(word,"#f2a93b","#1b1f26"),roughness:.5}));m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;}
+const INTAKE=new THREE.Vector3(1.25+OFF,.93,0),SHAFT=new THREE.Vector3(.4+OFF,.45,0),PILE_C=new THREE.Vector3(-1.3,0,0);
+let pile=[],moving=[],sweeping=[];
+function pileSpot(i){const a=i*2.399,layer=Math.floor(i/30),r=Math.min(.55,.075*Math.sqrt((i%30)+1)*1.25)*(1-layer*.22);return new THREE.Vector3(PILE_C.x+Math.cos(a)*r,TOK/2+layer*TOK*.85,PILE_C.z+Math.sin(a)*r);}
+function addPile(m){m.position.copy(pileSpot(pile.length));m.rotation.set(0,rnd(pile.length)*TAU,0);pile.push(m);}
+function clearPile(){if(INSTANT||REDUCE){pile.forEach(m=>scene.remove(m));}else pile.forEach((m,i)=>sweeping.push({m,t0:clock+i*.015}));pile=[];}
+
+// ================================================================ signal dots (drawn on top so they read through the body)
+const DOT=new THREE.BoxGeometry(.055,.055,.055);
+function dotMat(c){return new THREE.MeshBasicMaterial({color:c,depthTest:false,transparent:true});}
+function curve(pts,closed){return new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(...p)),!!closed,"catmullrom",.4);}
+const CV={
+  wheelIn:curve([[.15,.86,-.38],[.4,.78,-.3],[.75,.86,-.15],[1.15,1.02,-.04],[1.25,.97,0]]),
+  out:curve([[1.1,.42,.3],[1.25,.36,.55],[1.35,.34,.76],[1.35,.06,.8]]),
+  back:curve([[1.35,.06,.8],[1.15,.3,.92],[.9,.8,.7],[1.12,1.12,.25],[1.25,.98,0]]),
+  loop:curve([[1.1,.42,.3],[1.35,.34,.76],[1.35,.06,.8],[1.15,.3,.92],[.9,.8,.7],[1.12,1.12,.25],[1.25,.98,0],[1.25,.75,.2]],true)
+};
+let dots=[],loopDots=[];
+function sendDot(cv,color,dur,delay){if(INSTANT||REDUCE)return;const m=new THREE.Mesh(DOT,dotMat(color));m.renderOrder=10;m.visible=false;eng.add(m);dots.push({m,cv,dur,t0:clock+(delay||0)});}
+function setLoop(on,dense){loopDots.forEach(d=>eng.remove(d.m));loopDots=[];S.loop=on?1:0;if(!on||REDUCE||INSTANT)return;const n=dense?28:10;
+  for(let i=0;i<n;i++){const m=new THREE.Mesh(DOT,dotMat(i%2?C.cyan:C.amber));m.renderOrder=10;if(dense)m.scale.setScalar(.7);eng.add(m);loopDots.push({m,o:i/n});}}
+const loopTube=new THREE.Mesh(new THREE.TubeGeometry(CV.loop,160,.01,6,true),new THREE.MeshBasicMaterial({color:C.amber,transparent:true,opacity:0,depthTest:false}));loopTube.renderOrder=9;eng.add(loopTube);
+
+// ================================================================ timeline
+let tasks=[];
+function later(d,fn){if(INSTANT||REDUCE){fn();return;}tasks.push({at:clock+d,fn});}
+function flush(){const wasLoop=S.loop,wasPerf=S.perf;INSTANT=true;let g=0;while(tasks.length&&g++<500){tasks.sort((a,b)=>a.at-b.at);tasks.shift().fn();}
+  parts.forEach(finish);
+  moving.forEach(b=>{if(b.isIn)scene.remove(b.m);else addPile(b.m);});moving=[];
+  sweeping.forEach(s=>scene.remove(s.m));sweeping=[];
+  dots.forEach(d=>eng.remove(d.m));dots=[];
+  INSTANT=false;
+  if(S.loop&&!loopDots.length)setLoop(true,S.perf);else if(!S.loop&&loopDots.length)setLoop(false);}
+
+// ================================================================ world state
+const DEF={built:0,kick:0,roll:0,speed:0,nudge:0,loop:0,xray:0,track:0,finishAt:-1e9,spinCar:0,perf:0};
+const S=Object.assign({},DEF);
+
+// ================================================================ banner, tags, captions
+const banner=$("banner");
+function bannerShow(html){banner.innerHTML=html;banner.classList.remove("off");layout();}
+function bannerHide(){banner.classList.add("off");layout();}
+const anim=()=>(INSTANT||REDUCE)?"":" new";
+function chip(word,cls){const c=document.createElement("span");c.className="chip "+cls+anim();c.textContent=word;return c;}
+const PRIMS=[["mi","engine mounts, wiring"],["in","wheel, throttle"],["out","wheels on the ground"],["cf","transmission"],["cx","the frame"]];
+function primChip(k,label,on,cur){const P2=PRIM[k];return '<span class="prim'+(on?" on":"")+(cur?" cur":"")+'" style="'+(on?"border-color:"+P2.css+";":"")+(cur?"background:"+P2.css+";color:"+P2.fg+";":on?"background:"+P2.css+"22;":"")+'"><b>'+P2.name+'</b> · '+label+'</span>';}
+function harnessBanner(built,cur){bannerShow('<div class="bh">The harness <span>the body, one primitive at a time</span></div><div class="prims">'+
+  PRIMS.map(([k,d],i)=>primChip(k,d,i<built||i===cur,i===cur)).join("")+'</div>');}
+function logLine(cls,text){const lg=$("log");if(!lg)return null;const d=document.createElement("div");d.className=cls+anim();d.textContent=text;lg.appendChild(d);while(lg.children.length>10)lg.removeChild(lg.children[1]);layout();return d;}
+const PROD=[["Persistence",["cx","cf"]],["Safety & security",["in","out"]],["Observability",["mi"]],["Resilience",["mi","out"]],["Performance",["mi","cx"]]];
+let prod={done:0,cur:-1,laps:0};
+function prodBanner(){bannerShow('<div class="bh">Production <span>same five primitives, better parts · back on the track after each swap</span></div><div class="prod">'+
+  PROD.map(([n,ps],i)=>{const st=i<prod.done?"on":i===prod.cur?"cur":"";return '<span class="c '+st+'">'+n+'</span><span class="ps '+st+'">'+ps.map(k=>'<span class="pp" style="border-color:'+PRIM[k].css+';color:'+PRIM[k].css+'">'+PRIM[k].name+'</span>').join("")+'</span><span class="lap">'+(i<prod.laps?"✓ 5/5":"")+'</span>';}).join("")+'</div>');}
+let tags=[];
+function setTags(list){tags.forEach(t=>t.el.remove());tags=[];(list||[]).forEach(t=>{const el=document.createElement("div");el.className="tag"+(t.cls?" "+t.cls:"");el.textContent=t.text;
+  if(t.prim){el.style.background=PRIM[t.prim].css;el.style.color=PRIM[t.prim].fg;}$("tags").appendChild(el);
+  tags.push({el,p:new THREE.Vector3(...t.at)});later(t.delay||0,()=>el.classList.add("on"));});}
+function cap(h,p){$("h").innerHTML=h;$("p").textContent=p;}
+
+// ================================================================ runs
+const IN=["The"," tests"," are"," failing","."," Find"," out"," why"," and"," fix"," it","."];
+const OUT=["Fix",":"," return"," subtotal"," *"," (1"," -"," discount"," /"," 100",")"];
+function runEngine(){
+  bannerShow('<div class="bh">The model\'s loop <span>reads everything so far, predicts the next token, adds it, goes again</span></div><div class="loop"><div class="seq" id="seq"></div><div class="step"><span class="model" id="model">Model</span>→<span class="slot" id="slot"></span></div></div>');
+  IN.forEach((w,i)=>{const t=.2+i*.3;
+    later(t,()=>{if(!INSTANT&&!REDUCE)moving.push({m:block(w,true),t0:clock,dur:.7,isIn:true});});
+    later(t+.7,()=>{$("seq").appendChild(chip(w,"in"));S.kick=Math.max(S.kick,.4);});});
+  let t=.2+IN.length*.3+1.0;
+  [...OUT,"(end)"].forEach(w=>{const isEnd=w==="(end)";
+    later(t,()=>{$("model").classList.add("on");S.kick=1;});
+    later(t+.35,()=>{$("slot").innerHTML="";$("slot").appendChild(chip(w,isEnd?"end":"out"));
+      if(!isEnd){const m=block(w,false);if(INSTANT||REDUCE)addPile(m);else moving.push({m,t0:clock,dur:.55,isIn:false,target:pileSpot(pile.length+moving.filter(x=>!x.isIn).length)});}});
+    later(t+.75,()=>{$("model").classList.remove("on");if(!isEnd){$("slot").innerHTML="";$("seq").appendChild(chip(w,"out"));}});
+    t+=.95;});
+  return t;}
+const RUN=[["$ pytest -q","└ 1 failed · AssertionError: 15 != 22.5","r"],["$ cat prices.py test_prices.py","└ the code subtracts the discount as a flat amount","r"],
+  ["$ sed -i 's/subtotal - discount/subtotal * (1 - discount \/ 100)/' prices.py","└ prices.py changed","r"],["$ pytest -q","└ 2 passed","ok ind"]];
+function runCar(){
+  bannerShow('<div class="bh">The agent\'s loop <span>the engine decides, the harness acts, what happened goes back in</span></div><div class="log" id="log"></div>');
+  logLine("i","< The tests are failing. Find out why and fix it.");sendDot(CV.wheelIn,C.blue,1,.2);later(1.2,()=>{S.kick=1;});
+  let t=1.6;
+  RUN.forEach(([act,res,cls])=>{later(t,()=>{S.kick=1;logLine("a",act);});sendDot(CV.out,C.amber,.7,t);
+    later(t+.7,()=>{S.speed=1;});later(t+1.9,()=>{S.speed=0;logLine(cls,res);});sendDot(CV.back,cls.startsWith("ok")?C.green:C.cyan,.8,t+1.9);later(t+2.7,()=>{S.kick=.8;});t+=3.0;});
+  later(t,()=>{S.kick=1;logLine("s","> The tests pass now.");setTags([{text:"✓ The tests pass",at:[-.3,1.5,0],cls:"ok"}]);});
+  return t+.4;}
+const TASKS=["The tests are failing. Find out why and fix it.","Add a function count(items) to prices.py.","Write the names of the .py files into files.txt.","What does total() return for an empty basket? Don't change anything.","Which operating system is this computer running? Write it into os.txt."];
+function runTrack(cmd){
+  setTags([]);S.track=1;
+  bannerShow('<div class="bh">Evaluation <span>each task in a fresh copy of shop/, checked by what it did, not what it says</span></div><div class="log" id="log"></div>');
+  logLine("s","$ "+cmd);later(.5,()=>setLoop(true,S.perf));
+  let t=.7;
+  TASKS.forEach(task=>{let el;later(t,()=>{el=logLine("a","▸ "+task);S.finishAt=S.roll;S.speed=1.6;S.kick=1;});
+    later(t+2.1,()=>{if(el){el.className="ok";el.textContent="PASS  "+task;}S.kick=.6;});t+=2.5;});
+  later(t,()=>{S.speed=0;setLoop(false);logLine("ok","5/5 passed");setTags([{text:"✓ 5/5 passed",at:[-.3,1.5,0],cls:"ok"}]);});
+  later(t+1.4,()=>{S.track=0;});
+  return t+.2;}
+function quickLap(at){
+  later(at,()=>{S.track=1;setLoop(true,S.perf);S.finishAt=S.roll;S.speed=1.8;S.kick=1;});
+  later(at+2.2,()=>{S.speed=0;setLoop(false);prod.laps++;prodBanner();});
+  later(at+3.0,()=>{S.track=0;});
+  return at+2.4;}
+
+// ================================================================ steps
+const STEPS=[
+ {cta:"",h:"An empty floor",p:"Every agent starts from nothing. Tap to build its engine.",
+  note:"README · What is an Agent? An agent loops: observe, think, act. We'll build one the way a car is built: engine first, then the body.",run(){return 0;}},
+ {cta:"Tap to build the engine",h:"The <span>engine</span>",p:"This is the model. It takes input and produces output. Tap to give it some input.",
+  note:"Agent Primitives · The model is the mind. TokensOut = Model(TokensIn): it predicts the next token, appends it, and goes again until it predicts the end.",
+  run(){build("stand");build("engine",.5);build("throttle",2.2);build("pulley",2.3);build("flywheel",2.4);
+   later(3.6,()=>{S.built=1;setTags([{text:"Input",at:[1.67,.98,0],prim:"in"},{text:"Output",at:[PILE_C.x-OFF,.42,0],prim:"mi"}]);});return 3.7;}},
+ {cta:"Tap to send input",h:"Input in, <span>output out</span>",p:"The engine reads the input and writes the fix, one token at a time.",
+  note:"A model can't capture its own inputs, assemble what it's shown, act on its outputs, or define the loop. The output is the real fix from the README's run: return subtotal * (1 - discount / 100).",
+  run(){const t=runEngine();later(t,()=>cap("The engine <span>goes nowhere</span>","The right fix is in the output, but it just lands on the floor. Nothing changed the code. The tests are still failing."));return t+.1;}},
+ {cta:"Tap to start building the body",h:"1 · <span>Model interface</span>",p:"Engine mounts and a wiring harness tie the engine to the rest of the car. Every other part reaches the model through them.",
+  note:"Building a Harness · 1. Reach the model. request_response() in 1_model_interface.py sends a request and returns the response.",
+  run(){clearPile();unbuild("stand");build("mounts",.3);build("wiring",1.0);harnessBanner(0,0);later(2.2,()=>harnessBanner(1,-1));
+   setTags([{text:"Model interface · mounts and wiring",at:[.6,.95,.4],prim:"mi",delay:1.6}]);return 2.6;}},
+ {cta:"Tap to add input",h:"2 · <span>Input</span>",p:"A steering wheel and a throttle. Now a request comes in from the driver's seat instead of being dropped in the top.",
+  note:"2. Let someone ask. capture_input() in 2_input.py reads what a person types. It still can only reply in words.",
+  run(){build("seats");build("steer",.6);build("pedals",1.0);harnessBanner(1,1);
+   later(2.0,()=>{for(let i=0;i<3;i++)sendDot(CV.wheelIn,C.blue,1,i*.25);});later(3.0,()=>{S.kick=.6;harnessBanner(2,-1);});
+   setTags([{text:"Input · steering wheel",at:[.15,1.1,-.38],prim:"in",delay:1.2}]);return 3.2;}},
+ {cta:"Tap to add output",h:"3 · <span>Output</span>",p:"Wheels on the ground. Now output turns into action: the car moves. Once. What happened goes nowhere, so the engine never hears about it.",
+  note:"3. Let it act. handle_output() in 3_output.py runs the shell command the model asks for. What the command printed goes nowhere yet.",
+  run(){build("hubs");WHEELS.forEach(([n],i)=>build(n,.4+i*.25));harnessBanner(2,2);
+   later(2.6,()=>{S.kick=1;sendDot(CV.out,C.amber,.7,0);});later(3.3,()=>{S.nudge=1;});
+   later(3.9,()=>{if(INSTANT||REDUCE)return;const m=new THREE.Mesh(DOT,dotMat(C.cyan));m.renderOrder=10;eng.add(m);dots.push({m,fall:true,t0:clock});});
+   later(4.4,()=>harnessBanner(3,-1));setTags([{text:"Output · wheels",at:[1.35,.75,.8],prim:"out",delay:1.6}]);return 4.6;}},
+ {cta:"Tap to add control flow",h:"4 · <span>Control flow</span>",p:"The transmission. What happened goes back to the engine, and it goes again until the job is done. The loop closes.",
+  note:"4. Let it keep going. control_flow() in 4_control_flow.py sends back what the commands printed and goes again until the model is done, then hands back to you.",
+  run(){unbuild("flywheel");build("gearbox",.3);build("driveline",.9);build("shifter",1.6);harnessBanner(3,3);
+   later(2.4,()=>{setLoop(true);S.speed=.5;});later(3,()=>harnessBanner(4,-1));
+   setTags([{text:"Control flow · transmission",at:[.4,.82,0],prim:"cf",delay:1.2}]);return 3.2;}},
+ {cta:"Tap to add context",h:"5 · <span>Context</span>",p:"The frame ties every part together. Each turn, it decides what the engine is fed: who it is, the job, and everything that's happened so far.",
+  note:"5. Give it context. System (the mind), tools (the body), user (the world), assistant (the self). When the window fills, compact() summarizes the oldest part. All in harness.py.",
+  run(){setLoop(false);S.speed=0;build("frame");harnessBanner(4,4);later(2.6,()=>harnessBanner(5,-1));
+   setTags([{text:"Context · the frame",at:[-1.6,.5,.55],prim:"cx",delay:1.4}]);return 2.8;}},
+ {cta:"Tap to close the body",h:"The <span>body</span>",p:"Five primitives around one engine. That's a harness. With the engine inside, it's an agent.",
+  note:"Agent = Harness(Model). Neither is an agent alone: a model without a harness can only think, and a harness without a model can't decide.",
+  run(){build("body");setTags([]);later(3.2,()=>bannerHide());return 3.4;}},
+ {cta:"Tap to send the same input",h:"The agent <span>gets it done</span>",p:"Same engine, same input. This time the harness turns its output into action and brings each result back, until the tests pass.",
+  note:"The real run from the README: pytest fails with 15 != 22.5, it reads both files, applies the sed fix, and pytest shows 2 passed.",
+  run(){return runCar();}},
+ {cta:"Tap to put it on the track",h:"Evaluation · <span>the track</span>",p:"Put the car on the track: five tasks with known right answers, each in a fresh copy of shop/, checked by what it actually did.",
+  note:"Evaluating the Harness · tasks.py runs each task in a fresh copy of shop/ and checks the result, not the answer. uv run ../tasks.py → 5/5 passed. Run it after every change.",
+  run(){return runTrack("uv run ../tasks.py");}},
+ {cta:"Tap to get it ready for production",h:"Ready for <span>production</span>",p:"Production concerns aren't new parts bolted onto the car. They're better versions of the same five primitives. Swap a part, keep the car, and put it back on the track.",
+  note:"Getting it Ready for Production · six questions, asked of every primitive. Each answer changes a few lines of harness.py, marked with its question. The result is harness_prod.py.",
+  run(){S.xray=1;setTags([]);prod={done:0,cur:-1,laps:0};prodBanner();return 1.4;}},
+ {cta:"Tap to swap in persistence",h:"Persistence · <span>context and control flow</span>",p:"The frame gets a trip log: what happened, what's true, what worked. The transmission picks up the last session where it left off.",
+  note:"What should outlast the session? A diary in .harness/episodes/, facts in .harness/memory/memory.md, how-tos in .harness/skills/. Control flow resumes the last session.",
+  run(){prod.cur=0;prodBanner();swap("frame","frameLog",.2);swap("gearbox","gearboxMem",.9);
+   setTags([{text:"Context · frame → frame with a trip log",at:[-1.72,.8,0],prim:"cx",delay:1.4},{text:"Control flow · resumes the last session",at:[.5,.75,0],prim:"cf",delay:2}]);
+   later(2.6,()=>{prod.done=1;prod.cur=-1;prodBanner();});return quickLap(2.8);}},
+ {cta:"Tap to swap in safety and security",h:"Safety & security · <span>input and output</span>",p:"The steering gets a key: nothing runs without your yes. The hubs are sealed: every command runs in a box that sees only this folder, with no network.",
+  note:"What could do harm, and who could make it? Output runs commands in a Docker container with --network none, and secret files read as empty. Input asks run this? [y/N] before each one.",
+  run(){prod.cur=1;prodBanner();swap("steer","steerKey",.2);swap("hubs","hubsBox",.9);
+   setTags([{text:"Input · steering → steering with a key",at:[.2,1.12,-.38],prim:"in",delay:1.2},{text:"Output · hubs → sealed hubs",at:[1.35,.62,.62],prim:"out",delay:1.9}]);
+   later(2.6,()=>{prod.done=2;prod.cur=-1;prodBanner();});return quickLap(2.8);}},
+ {cta:"Tap to swap in observability",h:"Observability · <span>model interface</span>",p:"The wiring gets a recorder. Every request and every command is written down, outside the agent's reach, so you can see what it actually did.",
+  note:"What did it actually do? record() appends one line per step to ~/.harness/record.jsonl, outside the agent's folder where it can't change it.",
+  run(){prod.cur=2;prodBanner();swap("wiring","wiringObs",.2);
+   setTags([{text:"Model interface · wiring → wiring with a recorder",at:[.3,.95,.43],prim:"mi",delay:1.2}]);
+   later(2.2,()=>{prod.done=3;prod.cur=-1;prodBanner();});return quickLap(2.4);}},
+ {cta:"Tap to swap in resilience",h:"Resilience · <span>model interface and output</span>",p:"A backup line that retries a failed request, and run-flat tires: a command that hangs is stopped after a minute. It keeps rolling.",
+  note:"What if something breaks? Anthropic(max_retries=3) retries a failed request, and every command runs under timeout 60.",
+  run(){prod.cur=3;prodBanner();swap("wiringObs","wiringRes",.2);WHEELS.forEach(([n],i)=>swap(n,n+"R",.7+i*.15));
+   setTags([{text:"Model interface · a backup line",at:[.85,.8,.58],prim:"mi",delay:1.1},{text:"Output · tires → run-flats",at:[1.35,.85,.8],prim:"out",delay:1.8}]);
+   later(2.8,()=>{prod.done=4;prod.cur=-1;prodBanner();});return quickLap(3.0);}},
+ {cta:"Tap to swap in performance",h:"Performance · <span>model interface and context</span>",p:"High-flow wiring streams the output as it's written, and the frame keeps what the engine already read instead of sending it all again. Watch the flow.",
+  note:"Why is it slow or costly? cache_control keeps what the API already processed: about 7,600 tokens stored once, then reused at about a tenth of the price. Responses stream as they're written.",
+  run(){prod.cur=4;prodBanner();swap("wiringRes","wiringPerf",.2);swap("frameLog","frameCache",.9);
+   setTags([{text:"Model interface · high-flow, streaming",at:[.8,1.0,.3],prim:"mi",delay:1.2},{text:"Context · cache what it read",at:[-1.72,.85,0],prim:"cx",delay:1.9}]);
+   later(2.6,()=>{S.perf=1;prod.done=5;prod.cur=-1;prodBanner();});return quickLap(2.8);}},
+ {cta:"Tap to run the full track",h:"Evaluation · <span>5 / 5</span>",p:"Put the bug back and run every task on the production car. Same tasks, same checks. Every swap changed the harness, and the track is how you know it still works.",
+  note:"How do we know it still works? git checkout . then uv run ../tasks.py harness_prod.py → 5/5 passed. Run it after every change, with uv run ../security.py for the attacks.",
+  run(){return runTrack("uv run ../tasks.py harness_prod.py");}},
+ {cta:"Tap to swap the engine",h:"A new <span>engine</span>",p:"Swap in a different engine and only the mounts change. The rest of the harness never sees the engine, only what goes in and out through the model interface.",
+  note:"Building Agents, Part IV · The Mind Moves In. quark's own model replaces Sonnet, and only the model interface changes: it translates the Messages format to the model's chat template and back.",
+  run(){setTags([]);S.xray=1;
+   bannerShow('<div class="bh">The engine swap <span>only the model interface changes</span></div><div class="prims">'+["mi","in","out","cf","cx"].map(k=>primChip(k,k==="mi"?"new mounts":"unchanged",true,k==="mi")).join("")+'</div>');
+   ["engine","throttle","pulley"].forEach((n,i)=>unbuild(n,.2+i*.1));swap("mounts","mountsB",.6);build("engineB",1.4);build("throttleB",2.6);build("pulleyB",2.7);
+   setTags([{text:"Model interface · new mounts",at:[1.55,.35,-.45],prim:"mi",delay:1.6},{text:"A different engine",at:[1.25,1.15,0],delay:2.8}]);
+   later(3.6,()=>{S.kick=1;setLoop(true,1);S.speed=1.2;S.track=1;S.finishAt=S.roll;});later(6.2,()=>{S.speed=0;setLoop(false);S.track=0;});return 6.3;}},
+ {cta:"Tap to finish",h:"Agent = <span>Harness(Model)</span>",p:"An engine that only turns input into output, inside a body of five primitives. Production is better parts in the same places, and the track tells you it still works.",
+  note:"What you built · every agent, from this one to the coding assistants you use every day, is a model inside these five primitives, built with more care.",
+  run(){S.xray=.75;S.spinCar=1;bannerHide();finI=-1;finT=99;return 0;}}
+];
+const FIN=[["mi",[.6,1.0,.4],"Model interface · mounts, wiring"],["in",[.15,1.12,-.38],"Input · wheel, throttle"],["out",[1.35,.85,.8],"Output · wheels"],["cf",[.4,.82,0],"Control flow · transmission"],["cx",[-1.72,.85,0],"Context · the frame"]];
+let finT=0,finI=-1;
+
+// ================================================================ navigation
+let cur=0,busy=false,busyUntil=0,notesOn=false;
+function resetWorld(){tasks=[];parts.forEach(p=>{p.meshes.forEach(m=>m.visible=false);p.state="hidden";});
+  [...pile,...moving.map(b=>b.m),...sweeping.map(s=>s.m)].forEach(m=>scene.remove(m));pile=[];moving=[];sweeping=[];
+  dots.forEach(d=>eng.remove(d.m));dots=[];setLoop(false);Object.assign(S,DEF);eng.rotation.y=0;setTags([]);bannerHide();}
+function show(){const s=STEPS[cur];cap(s.h,s.p);$("notes").textContent=s.note;$("notes").hidden=!notesOn;
+  $("count").textContent=(cur+1)+" / "+STEPS.length;$("back").disabled=cur===0;setHint();setTimeout(layout,30);}
+function setHint(){const h=$("hint");h.classList.toggle("busy",busy);h.textContent=busy?"Tap to skip ahead":cur<STEPS.length-1?STEPS[cur+1].cta:"The end · Restart to replay";}
+function start(i){cur=i;show();const d=STEPS[i].run()||0;busy=!(REDUCE||d<=0);busyUntil=clock+d;setHint();}
+function go(n){n=Math.max(0,Math.min(STEPS.length-1,n));
+  resetWorld();INSTANT=true;for(let i=0;i<n;i++){cur=i;STEPS[i].run();}INSTANT=false;flush();start(n);}
+function next(){if(busy){flush();busy=false;setHint();return;}if(cur<STEPS.length-1){flush();start(cur+1);}}
+function prev(){if(cur>0)go(cur-1);}
+$("back").addEventListener("click",e=>{e.stopPropagation();prev();});
+$("restart").addEventListener("click",e=>{e.stopPropagation();go(0);});
+function toggleNotes(){notesOn=!notesOn;$("ntog").setAttribute("aria-pressed",notesOn);$("notes").hidden=!notesOn;layout();}
+$("ntog").addEventListener("click",e=>{e.stopPropagation();toggleNotes();});
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"||e.key==="PageDown"||((e.key===" "||e.key==="Enter")&&e.target.tagName!=="BUTTON")){e.preventDefault();next();}
+  else if(e.key==="ArrowLeft"||e.key==="PageUp"){e.preventDefault();prev();}
+  else if(e.key==="n"||e.key==="N"){toggleNotes();}
+  else if(e.key==="Home"){go(0);}});
+let down=null,user=0,userP=0;
+canvas.addEventListener("pointerdown",e=>{down={x:e.clientX,y:e.clientY,lx:e.clientX,ly:e.clientY,moved:false};canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener("pointermove",e=>{if(!down)return;if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>10)down.moved=true;
+  if(down.moved){user-=(e.clientX-down.lx)*.006;userP=Math.max(-.2,Math.min(.6,userP+(e.clientY-down.ly)*.004));}down.lx=e.clientX;down.ly=e.clientY;});
+canvas.addEventListener("pointerup",()=>{if(down&&!down.moved)next();down=null;});
+canvas.addEventListener("pointercancel",()=>{down=null;});
+
+// ================================================================ per-frame updates
+const tv=new THREE.Vector3();let loopPhase=0,xr=0,trackOp=0;
+function update(dt){
+  for(let i=0;i<tasks.length;i++)if(clock>=tasks[i].at){const t=tasks.splice(i,1)[0];i--;t.fn();}
+  if(busy&&clock>=busyUntil&&!tasks.length){busy=false;setHint();}
+  for(let i=moving.length-1;i>=0;i--){const b=moving[i],k=Math.min(1,(clock-b.t0)/b.dur);
+    if(b.isIn){b.m.position.set(INTAKE.x,INTAKE.y+1.5*(1-k*k),INTAKE.z);b.m.rotation.y=k*1.5;if(k>=1){scene.remove(b.m);moving.splice(i,1);}continue;}
+    tv.copy(SHAFT).lerp(b.target,k);tv.y=SHAFT.y+(b.target.y-SHAFT.y)*k*k+Math.sin(k*Math.PI)*.18;b.m.position.copy(tv);b.m.rotation.set(k*4,k*2,0);
+    if(k>=1){moving.splice(i,1);addPile(b.m);}}
+  for(let i=sweeping.length-1;i>=0;i--){const s=sweeping[i],k=(clock-s.t0)/.5;if(k<0)continue;s.m.scale.setScalar(Math.max(.001,1-k));s.m.position.y-=dt*.1;if(k>=1){scene.remove(s.m);sweeping.splice(i,1);}}
+  for(let i=dots.length-1;i>=0;i--){const d=dots[i],k=(clock-d.t0)/(d.dur||1);if(k<0)continue;d.m.visible=true;
+    if(d.fall){const f=clock-d.t0;d.m.position.set(1.35+f*.8,.06+Math.max(0,.6*f-2.5*f*f),.82+f*.5);d.m.material.opacity=Math.max(0,1-f*.9);if(f>1.1){eng.remove(d.m);dots.splice(i,1);}continue;}
+    if(k>=1){eng.remove(d.m);dots.splice(i,1);continue;}d.cv.getPointAt(k,d.m.position);}
+  loopPhase+=dt*(S.perf?.4:.28);loopDots.forEach(d=>CV.loop.getPointAt((loopPhase+d.o)%1,d.m.position));
+  loopTube.material.opacity+=((S.loop?.35:0)-loopTube.material.opacity)*Math.min(1,dt*4);loopTube.visible=loopTube.material.opacity>.01;
+  if(S.nudge>0){const s=Math.min(S.nudge,dt*1.4);S.nudge-=s;S.roll+=s*.5;}
+  S.roll+=S.speed*(REDUCE?0:1.6)*dt;
+  WHEELS.forEach(([n])=>{P[n].g.rotation.z=P[n+"R"].g.rotation.z=-S.roll/.34;});
+  grid.position.x=-((S.roll%.25)+.25)%.25;
+  xr+=(S.xray-xr)*Math.min(1,dt*3);if(REDUCE)xr=S.xray;
+  P.body.meshes.forEach(m=>{const kind=m.userData.kind,base=kind===2?.45:1,tr=kind===2||xr>.01;if(m.material.transparent!==tr){m.material.transparent=tr;m.material.needsUpdate=true;}m.material.opacity=base*(1-.8*xr);m.material.depthWrite=kind!==2&&xr<.4;});
+  trackOp+=(S.track-trackOp)*Math.min(1,dt*2);if(REDUCE)trackOp=S.track;lineMat.opacity=.75*trackOp;
+  laneDashes.forEach(m=>{m.position.x=((m.userData.bx-S.roll)%24+36)%24-12;});
+  finishLine.position.x=OFF+3.4-(S.roll-S.finishAt);finishLine.material.opacity=trackOp*(Math.abs(finishLine.position.x)<14?1:0);
+  if(S.spinCar&&!REDUCE)eng.rotation.y+=dt*.25;
+  if(cur===STEPS.length-1){finT+=dt;if(finT>2.4){finT=0;finI=(finI+1)%FIN.length;setTags([{text:FIN[finI][2],at:FIN[finI][1],prim:FIN[finI][0]}]);}}
+}
+
+// ================================================================ layout and camera
+let shY=0;
+function layout(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
+  const top=banner.classList.contains("off")?40:banner.getBoundingClientRect().bottom,bot=document.querySelector(".cap").getBoundingClientRect().top+20;
+  shY=(top+bot)/2-h/2;const dy=Math.abs(shY),FH=h+2*dy,base=w/h<.9?54:38;camera.aspect=w/FH;camera.fov=2*Math.atan(Math.tan(base*Math.PI/360)*FH/h)*180/Math.PI;
+  camera.setViewOffset(w,FH,0,shY>0?0:2*dy,w,h);camera.updateProjectionMatrix();}
+window.addEventListener("resize",layout);
+const LOOK=new THREE.Vector3(0,.42,0),pv=new THREE.Vector3();let lookX=0,lookY=.42,camDist=3.3;
+function placeTag(t){pv.copy(t.p).applyMatrix4(eng.matrixWorld).project(camera);
+  const hw=t.el.offsetWidth/2+16;t.el.style.transform="translate("+Math.round(Math.max(hw,Math.min(innerWidth-hw,(pv.x*.5+.5)*innerWidth)))+"px,"+Math.round((-pv.y*.5+.5)*innerHeight)+"px) translate(-50%,-100%)";}
+let last=performance.now(),spin=0;
+function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;clock+=dt;
+  animParts();update(dt);
+  S.kick=Math.max(0,S.kick-dt*1.8);if(S.built)spin+=(900+S.kick*2400)/60*TAU*dt*.05;["pulley","pulleyB","flywheel"].forEach(n=>P[n].g.rotation.x=spin);
+  const sh=(S.built&&!REDUCE)?(cur<3?.0012+S.kick*.002:.0005+S.kick*.0008):0;eng.position.set(OFF+(Math.random()-.5)*sh,(Math.random()-.5)*sh,(Math.random()-.5)*sh);
+  const narrow=innerWidth/innerHeight<.9,car=cur>=3;
+  const gx=car?OFF:(cur>=2?(narrow?-.62:-.45):0),gy=car?.55:.42,gd=car?(narrow?9.4:6.6):(narrow?4.4:3.3);
+  const a=REDUCE?1:Math.min(1,dt*1.5);lookX+=(gx-lookX)*a;lookY+=(gy-lookY)*a;camDist+=(gd-camDist)*a;LOOK.set(lookX,lookY,0);
+  const yaw=(REDUCE?1:1.0+Math.sin(clock*.09)*.25)+user,p=.3+userP;
+  camera.position.set(LOOK.x+Math.cos(yaw)*Math.cos(p)*camDist,LOOK.y+Math.sin(p)*camDist,LOOK.z+Math.sin(yaw)*Math.cos(p)*camDist);camera.lookAt(LOOK);
+  renderer.render(scene,camera);tags.forEach(placeTag);
+  requestAnimationFrame(frame);}
+layout();go(0);requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>

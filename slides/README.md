@@ -12,6 +12,8 @@ Slide decks for teaching this repo, built from its code and its real runs. There
 
 Each build step uses the same four slides: what the primitive is, its code, a real run, and what it still can't do. Every slide has speaker notes.
 
+There's also [**The Engine Test**](./engine-animation/), a 3D animation of the whole course in 20 taps: an engine (the model) whose output piles up on the floor, a car body (the harness) built around it one primitive at a time, production as better parts in the same places, and laps on a test track. Open [`engine-animation/index.html`](./engine-animation/index.html) to present it. It runs offline and has speaker notes too.
+
 ## Presenting
 
 Open a deck's `.html` file in a browser. The arrow keys, space, or a click move between slides; **N** shows the speaker notes; **F** goes full screen. The address ends in the slide's number, so you can link to one. The slides use IBM Plex Sans and JetBrains Mono from Google Fonts, so present online, or use the PDF.
